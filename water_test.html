@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Water Termination Operation</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        #pdf-area { background: white !important; color: black !important; }
+        .calc-card {
+            page-break-inside: avoid;
+            break-inside: avoid;
+            background-color: white;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            padding: 15px;
+        }
+        /* 2列3行のグリッドレイアウト */
+        .input-grid-dc {
+            display: grid;
+            grid-template-columns: 1fr 1fr; 
+            gap: 15px 20px; 
+            max-width: 800px;
+            margin-bottom: 20px;
+        }
+        .input-grid-dc div {
+            display: flex;
+            flex-direction: column;
+        }
+        .input-grid-dc label {
+            font-size: 0.85rem;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        .input-grid-dc input {
+            padding: 8px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+        }
+        .result-box { 
+            font-size: 20px; 
+            font-weight: bold;
+            margin-top: 10px;
+            min-height: 50px;
+            padding: 15px;
+            border-radius: 4px;
+            background-color: #000;
+            color: #00ff00;
+            font-family: monospace;
+        }
+        .formula-text {
+            font-size: 0.8rem;
+            color: #666;
+            margin-bottom: 5px;
+        }
+        .btn {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 4px;
+            border: none;
+            text-decoration: none;
+            display: inline-block;
+        }
+        .btn-back { background: #6c757d; color: white; margin-bottom: 15px; }
+        /* PDFボタンを赤色に変更 */
+        .btn-pdf { background: #dc3545; color: white; } 
+        .btn-main { background: #28a745; color: white; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn btn-back">← Back to TOP</a>
+        
+        <div id="pdf-area">
+            <div class="calc-card">
+                <h2>Water Termination Operation / 水端末運転</h2>
+                
+                <div class="input-grid-dc">
+                    <div>
+                        <label>Cable Insulation Dia. / 絶縁体外径 [mm]</label>
+                        <input type="number" id="ins_dia" oninput="calcCurrent()" placeholder="e.g. 100.0">
+                    </div>
+                    <div>
+                        <label>Inner Tube Inner Dia. / 水端末内筒内径 [mm]</label>
+                        <input type="number" id="it_inner_dia" oninput="calcCurrent()" placeholder="e.g. 110.0">
+                    </div>
+                    
+                    <div>
+                        <label>Inner Tube Outer Dia. / 水端末内筒外径 [mm]</label>
+                        <input type="number" id="it_outer_dia" oninput="calcCurrent()" placeholder="e.g. 120.0">
+                    </div>
+                    <div>
+                        <label>Outer Tube Inner Dia. / 水端末外筒内径 [mm]</label>
+                        <input type="number" id="ot_inner_dia" oninput="calcCurrent()" placeholder="e.g. 200.0">
+                    </div>
+
+                    <div>
+                        <label>Water Conductivity / 導電度 [μs/cm]</label>
+                        <input type="number" id="conductivity" oninput="calcCurrent()" placeholder="e.g. 2.0">
+                    </div>
+                    <div>
+                        <label>Tube Length / 水端末筒長 [mm]</label>
+                        <input type="number" id="tube_length" oninput="calcCurrent()" placeholder="e.g. 1000.0">
+                    </div>
+                </div> 
+
+                <label>Calculation Results / 計算結果</label>
+                <div class="formula-text">Formula: Area = (Diameter/20)² * π [cm²]</div>
+                <div id="dc_result" class="result-box">
+                    Waiting for input...
+                </div>
+            </div>
+        </div>   
+
+        <button class="btn btn-pdf" onclick="window.print();">PDF Report Export</button>
+
+        <button class="btn btn-main" style="margin-top: 10px;" onclick="sendContactEmailWater()">
+            Inquiry for Detailed Analysis (Open Email) / 詳細な検討をお問い合わせ
+        </button>
+    </div>
+
+    <script>
+function calcCurrent() {
+    // 1. 入力値の取得
+    const d_ins = parseFloat(document.getElementById('ins_dia').value) || 0;
+    const d_it_in = parseFloat(document.getElementById('it_inner_dia').value) || 0;
+    const d_it_out = parseFloat(document.getElementById('it_outer_dia').value) || 0;
+    const d_ot_in = parseFloat(document.getElementById('ot_inner_dia').value) || 0;
+    
+    const cond = parseFloat(document.getElementById('conductivity').value) || 0;
+    const len_cm = (parseFloat(document.getElementById('tube_length').value) || 0) / 10; // mmをcmに換算
+
+    // 2. 断面積計算関数 (cm2)
+    const calcArea = (dia) => {
+        if (dia <= 0) return 0;
+        return Math.pow(dia / 20, 2) * Math.PI;
+    };
+
+    const a_ins = calcArea(d_ins);
+    const a_it_in = calcArea(d_it_in);
+    const a_it_out = calcArea(d_it_out);
+    const a_ot_in = calcArea(d_ot_in);
+
+    // 3. 水路の断面積差 (有効水路面積)
+    const diff_inner = a_it_in - a_ins;
+    const diff_outer = a_ot_in - a_it_out;
+
+    // 4. 個別抵抗値の計算 [MΩ]
+    let res_inner = 0;
+    let res_outer = 0;
+
+    if (cond > 0 && len_cm > 0) {
+        if (diff_inner > 0) res_inner = len_cm / (cond * diff_inner);
+        if (diff_outer > 0) res_outer = len_cm / (cond * diff_outer);
+    }
+
+    // 5. 合計抵抗と比率の計算
+    // 合成抵抗 (和分の積): (R1 * R2) / (R1 + R2)
+    const total_res = (res_inner > 0 && res_outer > 0) 
+        ? (res_inner * res_outer) / (res_inner + res_outer) 
+        : (res_inner + res_outer);
+
+    // 抵抗比: Inner / Outer
+    const ratio = (res_outer > 0) ? (res_outer / res_inner) : 0;
+
+    // 6. 結果の表示
+    const resultBox = document.getElementById('dc_result');
+    resultBox.innerHTML = `
+        <div style="font-size: 0.65em; color: #888; margin-bottom: 5px; border-bottom: 1px solid #333;">
+            Sectional Areas / 断面積 [cm²]
+        </div>
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 3px 10px; font-size: 0.7em; margin-bottom: 15px;">
+            <div>Insulation: ${a_ins.toFixed(2)}</div>
+            <div>IT Inner: ${a_it_in.toFixed(2)}</div>
+            <div>IT Outer: ${a_it_out.toFixed(2)}</div>
+            <div>OT Inner: ${a_ot_in.toFixed(2)}</div>
+        </div>
+
+        <div style="font-size: 0.65em; color: #888; margin-bottom: 5px; border-bottom: 1px solid #333;">
+            Resistance Results / 抵抗値計算 [MΩ]
+        </div>
+        <div style="color: #00ff00; font-size: 0.85em; line-height: 1.5; font-family: monospace;">
+            <div>Inner Tube Resistance = ${res_inner.toFixed(4)} MΩ</div>
+            <div>Outer Tube Resistance = ${res_outer.toFixed(4)} MΩ</div>
+            <div style="margin-top: 5px; color: #fff; border-top: 1px dashed #444;">
+                Total Resistance = ${total_res.toFixed(4)} MΩ
+            </div>
+            <div style="color: #ffcc80;">
+                Outer Inner Ratio = ${ratio.toFixed(3)}
+            </div>
+        </div>
+    `;
+}
+         function sendContactEmailWater() {
+    // 1. 入力値の取得
+    const insDia = document.getElementById('ins_dia').value || "---";
+    const itIn = document.getElementById('it_inner_dia').value || "---";
+    const itOut = document.getElementById('it_outer_dia').value || "---";
+    const otIn = document.getElementById('ot_inner_dia').value || "---";
+    const cond = document.getElementById('conductivity').value || "---";
+    const len = document.getElementById('tube_length').value || "---";
+
+    // 2. 計算結果表示エリアからテキストを取得
+    const resArea = document.getElementById('dc_result');
+    let resultsText = "";
+    if (resArea && resArea.innerText) {
+        // 余計な改行を整理して取得
+        resultsText = resArea.innerText.replace(/\n\s*\n/g, '\n').trim();
+    }
+
+    // 3. メールの件名と本文の構築
+    const subject = encodeURIComponent("Inquiry regarding Water Termination Operation / 水端末運転構成の相談");
+    
+    let bodyText = `Inquiry regarding the following Water Termination calculation results:\n`;
+    bodyText += `水端末運転の計算結果に基づき、以下の通り相談いたします。\n\n`;
+    
+    bodyText += `[Input Parameters / 入力パラメータ]\n`;
+    bodyText += `- Insulation Dia. / 絶縁体外径: ${insDia} mm\n`;
+    bodyText += `- IT Inner Dia. / 内筒内径: ${itIn} mm\n`;
+    bodyText += `- IT Outer Dia. / 内筒外径: ${itOut} mm\n`;
+    bodyText += `- OT Inner Dia. / 外筒内径: ${otIn} mm\n`;
+    bodyText += `- Conductivity / 導電度: ${cond} μs/cm\n`;
+    bodyText += `- Tube Length / 筒長: ${len} mm\n\n`;
+    
+    bodyText += `[Calculation Results / 計算結果]\n`;
+    bodyText += `${resultsText}\n\n`;
+    
+    bodyText += `Please provide a detailed analysis and review of these parameters.\n`;
+    bodyText += `上記内容について、詳細な解析・検討をお願いいたします。\n`;
+    bodyText += `Synthesis Technologies`;
+             
+
+    // 4. mailto URLの生成と起動
+    const mailtoUrl = `mailto:synthesis.nd1@gmail.com?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+    
+    window.open(mailtoUrl, '_blank');
+}
+    </script>
+</body>
+</html>

@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>AC Test</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        #pdf-area { background: white !important; color: black !important; }
+        .calc-card { break-inside: avoid; margin-bottom: 20px; page-break-inside: avoid; background-color: white; border: 1px solid #ccc; padding: 15px; }
+
+        /* ここを追加：デザインは変えず文字サイズのみアップ */
+        .result-box { 
+            font-size: 20px; /* もし大きすぎたら 20px などに調整してください */
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn btn-back">← Back to TOP</a>
+        <div id="pdf-area">
+            <div class="calc-card">
+                <h2>AC Current Calculation/静電容量と電圧から電流計算</h2>
+                <div class="input-grid">
+                    <div><label>Capacitance [μF]</label><input type="number" id="ac_c" placeholder="0.24" oninput="calcAC()"></div>
+                    <div><label>Frequency [Hz]</label><select id="ac_f" onchange="calcAC()"><option value="50">50</option><option value="60">60</option></select></div>
+                    <div><label>Test Voltage [kV]</label><input type="number" id="ac_v" placeholder="300" oninput="calcAC()"></div>
+                </div> 
+                <div id="ac_result" class="result-box"></div>
+            </div>
+
+            <div class="calc-card">
+                <h2>Resonant Frequency Calculation/共振計算</h2>
+                <div class="input-grid">
+                    <div><label>Capacitance [μF]</label><input type="number" id="res_c" placeholder="5.0" oninput="calcRes()"></div>
+                    <div><label>Inductor [H]</label><input type="number" id="res_l" placeholder="16.2" oninput="calcRes()"></div>
+                    <div><label>Test Voltage [kV]</label><input type="number" id="res_v" placeholder="260" oninput="calcRes()"></div>
+                </div>
+                <div id="res_result" class="result-box"></div>
+            </div>
+        </div>   
+
+        <button class="btn btn-pdf" onclick="window.print();">PDF Report Export</button>
+        <button class="btn btn-main" style="margin-top: 10px; background: #28a745;" onclick="sendContactEmailAC()">
+            Inquiry for Detailed Analysis (Open Email)/詳細な検討をお問い合わせ（メール起動）
+        </button>
+    </div>
+
+    <script src="shared.js"></script>
+
+    <script>
+        // このスクリプトの中では shared.js の cableList が自由に使えます
+
+        function calcAC() {
+            const c = parseFloat(document.getElementById('ac_c').value) || 0;
+            const f = parseFloat(document.getElementById('ac_f').value);
+            const v = parseFloat(document.getElementById('ac_v').value) || 0;
+            const resEl = document.getElementById('ac_result');
+            
+            if (c > 0 && v > 0) {
+                const i = 2 * Math.PI * f * (c * 1e-6) * (v * 1000);
+                // cableList は shared.js から自動的に参照されます
+                const cab = cableList.find(x => x.amp >= i);
+                resEl.innerHTML = `Current: ${i.toFixed(3)} A | Cable: ${cab ? cab.sq + 'sq' : '要検討'}`;
+            } else {
+                resEl.innerHTML = "";
+            }
+        }
+
+        function calcRes() {
+            const l = parseFloat(document.getElementById('res_l').value) || 0;
+            const c_m = parseFloat(document.getElementById('res_c').value) || 0;
+            const v_k = parseFloat(document.getElementById('res_v').value) || 0;
+            const resEl = document.getElementById('res_result');
+            
+            if (l > 0 && c_m > 0) {
+                const f = 1 / (2 * Math.PI * Math.sqrt(l * c_m * 1e-6));
+                let txt = `Freq: ${f.toFixed(3)} Hz`;
+                
+                if (v_k > 0) {
+                    const i = 2 * Math.PI * f * (c_m * 1e-6) * (v_k * 1000);
+                    const cab = cableList.find(x => x.amp >= i);
+                    txt = `Current: ${i.toFixed(3)} A | Freq: ${f.toFixed(3)} Hz | Cable: ${cab ? cab.sq + 'sq' : '要検討'}`;
+                }
+                resEl.innerHTML = txt;
+            } else {
+                resEl.innerHTML = "";
+            }
+        }
+
+        function sendContactEmailAC() {
+    // 1. AC Current Calculation データの取得
+    const ac_c = document.getElementById('ac_c').value || "---";
+    const ac_f = document.getElementById('ac_f').value || "---";
+    const ac_v = document.getElementById('ac_v').value || "---";
+    const ac_res = document.getElementById('ac_result').innerText || "---";
+
+    // 2. Resonant Frequency Calculation データの取得
+    const res_c = document.getElementById('res_c').value || "---";
+    const res_l = document.getElementById('res_l').value || "---";
+    const res_v = document.getElementById('res_v').value || "---";
+    const res_res = document.getElementById('res_result').innerText || "---";
+
+    const subject = encodeURIComponent("Inquiry regarding AC Test Configuration / AC試験構成の相談");
+    
+    // 3. メール本文の構築 (英語の後に日本語)
+    let bodyText = `Inquiry regarding the following AC Test calculation results:\n`;
+    bodyText += `AC試験の計算結果に基づき、以下の通り相談いたします。\n\n`;
+
+    bodyText += `[AC Current Calculation / 電流計算]\n`;
+    bodyText += `- Capacitance: ${ac_c} μF\n`;
+    bodyText += `- Frequency: ${ac_f} Hz\n`;
+    bodyText += `- Test Voltage: ${ac_v} kV\n`;
+    bodyText += `- Result: ${ac_res}\n\n`;
+
+    bodyText += `[Resonant Frequency Calculation / 共振計算]\n`;
+    bodyText += `- Capacitance: ${res_c} μF\n`;
+    bodyText += `- Inductor: ${res_l} H\n`;
+    bodyText += `- Test Voltage: ${res_v} kV\n`;
+    bodyText += `- Result: ${res_res}\n\n`;
+
+    bodyText += `Please provide a detailed analysis and review of these parameters.\n`;
+    bodyText += `上記内容について、詳細な解析・検討をお願いいたします。\n\n`;
+    bodyText += `Synthesis Technologies`;
+
+    const mailtoUrl = `mailto:synthesis.nd1@gmail.com?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+    window.open(mailtoUrl, '_blank');
+}
+
+
+ 
+    </script>
+</body>
+</html>

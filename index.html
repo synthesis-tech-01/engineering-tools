@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Engineering Tools Pro - Main</title>
+   <style>
+    body { font-family: sans-serif; text-align: center; padding: 50px; background: #f0f2f5; }
+    
+    .menu-container { display: flex; justify-content: center; gap: 20px; flex-wrap: wrap; }
+
+    .menu-card { 
+        background: white; 
+        padding: 40px; 
+        border-radius: 15px; 
+        width: 250px;
+        box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+        cursor: pointer; 
+        transition: 0.3s;
+        /* --- ここを修正：通常時の文字色を青にする --- */
+        color: #0056b3; 
+    }
+
+    /* カード内のタイトルと説明文の色を親要素(青)に合わせる */
+    .menu-card h2, .menu-card p {
+        color: inherit;
+        margin: 10px 0;
+    }
+
+    .menu-card:hover { 
+        transform: translateY(-10px); 
+        background: #0056b3; 
+        /* マウスを重ねた時は背景が青くなるので、文字は白にする */
+        color: white; 
+    }
+
+    /* メインタイトルの色（任意で青系に変更） */
+    h1 { color: #003366; margin-bottom: 40px; }
+</style>
+</head>
+<body>
+    <h1>Engineering Tools for Power Cable & High Volatge Testing</h1>
+    <div class="menu-container">
+        <div class="menu-card" onclick="location.href='impulse.html'">
+            <h2>High Voltage Impulse Test</h2>
+            <p>インパルステスト</p>
+        </div>
+        <div class="menu-card" onclick="location.href='ac_test.html'">
+            <h2>High Voltage AC Test</h2>
+            <p>商用周波数電流計算・共振周波数電流計算</p>
+        </div>
+        <div class="menu-card" onclick="location.href='dc_test.html'">
+            <h2>High Voltage DC Test</h2>
+            <p>直流電圧放電計算</p>
+        </div>
+        <div class="menu-card" onclick="location.href='heating_test.html'">
+            <h2>Heating Cycle Current Test</h2>
+            <p>通電電流計算</p>
+        </div>
+        <div class="menu-card" onclick="location.href='water_test.html'">
+            <h2>Water Termination Operation</h2>
+            <p>水端末運転</p>
+        </div>
+    </div>
+</body>
+</html>

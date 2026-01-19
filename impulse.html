@@ -1,0 +1,313 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Impulse Test</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        /* デザイン・色は一切変更していません */
+        #pdf-content {
+            padding: 0px; 
+            background-color: white;
+        }
+        .generated-item {
+            padding: 5px;
+            border-bottom: 1px solid #ccc;
+        }
+    </style>
+</head>
+    
+<body>
+    <div class="container">
+        <h5><a href="index.html" class="btn btn-back">← Back to TOP</a></h5>
+        
+        <div id="pdf-area">
+          <div class="calc-card">
+            <h3><span class="label-en">Impulse Test Configuration</span></h3>
+              
+             <div style="display: flex; justify-content: center; gap: 20px; width: 100%; text-align: center;">
+                 <div style="flex: 1; max-width: 400px;">
+                     <div style="font-weight: bold; margin-bottom: 8px;">Charge / 充電時</div>
+                     <img src="Charge.png" style="width: 100%; height: auto; display: block;" alt="Charge">
+                 </div>
+
+                 <div style="flex: 1; max-width: 400px;">
+                    <div style="font-weight: bold; margin-bottom: 8px;">Discharge / 放電時</div>
+                     <img src="Discharge.png" style="width: 100%; height: auto; display: block;" alt="Discharge">
+                </div>
+             </div>    
+          
+            <div style="background: linear-gradient(145deg, #ffffff, #fff4e5); padding: 5px; border-radius: 5px; border: 2px solid #ffcc80; margin-bottom: 5px; display: flex; gap: 5px;">
+                <div style="flex: 1;">
+                    <label class="label-ja">Capacitance/試料静電容量 [nF]</label>
+                    <input type="number" id="total_cap_nf" placeholder="nF" oninput="calculateImpulse()">
+                </div>
+                
+                <div style="flex: 1;">
+                    <label class="label-ja">Test Voltage/試験電圧 [kV]</label>
+                    <input type="number" id="test_v_kv" placeholder="kV" oninput="calculateImpulse()">
+                </div>
+            </div>
+
+            <div style="display: flex; gap: 10px; margin-bottom: 15px;">
+                <div style="flex: 1; background: #eef9f1; padding: 10px; border-radius: 8px;">
+                    <span class="label-ja">Termination Resistance/終端抵抗 [Ω]</span>
+                    <div style="display: flex; gap: 5px; margin-top: 5px;">
+                        <input type="number" id="term_r1" placeholder="End R1[Ω]" oninput="calculateImpulse()">
+                        <input type="number" id="term_r2" placeholder="End R2[Ω]" oninput="calculateImpulse()">
+                    </div>
+                </div>
+                
+                <div style="flex: 2; background: #f8f9fa; padding: 10px; border-radius: 8px;">
+                    <span class="label-ja">IG Parameters/インパルス装置内部回路</span>
+                    <div style="display: flex; gap: 5px; margin-top: 5px;">
+                        <input type="number" id="def_c1" placeholder="C1[uF] in IG" oninput="generateRows()">
+                        <input type="number" id="def_c2" placeholder="C2[uF] in IG" oninput="generateRows()">
+                        <input type="number" id="def_r1" placeholder="R1[Ω] in IG" oninput="generateRows()">
+                        <input type="number" id="def_r2" placeholder="R2[Ω] in IG" oninput="generateRows()">
+                        <input type="number" id="def_max_v" placeholder="MaxkV/stage" oninput="generateRows()">
+                    </div>
+                </div>
+            </div>
+
+            <div class="input-group">
+                <label class="label-ja">Stages/段数</label>
+                <select id="row-select" onchange="generateRows()"></select>
+            </div>
+       </div>
+            
+            <div class="imp-header" style="display: grid; grid-template-columns: 45px 1fr 1fr 1fr 1fr 1fr 90px; gap: 5px; background: #333; color: white; padding: 10px 5px; text-align: center; font-size: 0.8rem; font-weight: bold; border-radius: 8px 8px 0 0;">
+                <div>St.</div>
+                <div>C1</div>
+                <div>C2</div>
+                <div>R1</div>
+                <div>R2</div>
+                <div style="color:#ff8a80">Max kV</div>
+                <div>Stage kV</div>
+            </div>
+
+            <div id="rows-wrapper" style="border: 1px solid #ddd; border-top: none; max-height: 350px; overflow-y: auto; margin-bottom: 5px; display: flex; flex-direction: column-reverse;"></div>
+
+            <div id="imp_result_area" class="result-box"></div>
+                <button class="btn btn-pdf" onclick="window.print();">PDF Report Export</button>
+
+                <button class="btn btn-main" style="margin-top: 10px; background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px;" onclick="sendContactEmailIMP()">
+                Inquiry for Detailed Analysis (Open Email)/詳細な検討をお問い合わせ（メール起動）
+                </button>
+
+            <div id="contact-area" style="margin-bottom: 20px; padding: 12px; background: #fff9db; border: 1px solid #ffec99; border-radius: 1px;">
+                <p style="font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 10px;">
+                <strong style="color: #d9534f;">【Important Notice/ご注意】</strong><br>
+                   This calculation is an estimated value based on an ideal circuit. Actual test results may differ due to effects such as ground resistance, stray capacitance, and wiring inductance.
+                <br>
+                ※本計算は理想回路に基づいた推定値です。実際の試験では接地抵抗、浮遊容量、配線インダクタンスの影響により波形が異なる場合があります。        
+                </p>
+            </div>
+        </div> 
+    </div> 
+
+    <script src="shared.js"></script>
+    <script>
+        function generateRows() {
+          const wrapper = document.getElementById('rows-wrapper');
+          const count = parseInt(document.getElementById('row-select').value) || 1;
+          const d = { 
+              c1: document.getElementById('def_c1').value, 
+              c2: document.getElementById('def_c2').value, 
+              r1: document.getElementById('def_r1').value, 
+              r2: document.getElementById('def_r2').value, 
+              mv: document.getElementById('def_max_v').value 
+            };
+    
+            wrapper.innerHTML = ''; 
+              for (let i = 1; i <= count; i++) {
+              const row = document.createElement('div');
+              row.style = "display: grid; grid-template-columns: 45px 1fr 1fr 1fr 1fr 1fr 90px; gap: 5px; align-items: center; padding: 5px; border-bottom: 1px solid #eee;";
+        
+              row.innerHTML = `
+                <span style="text-align:center; font-size:0.9rem;">${i}</span>
+                <input type="number" id="c1_${i}" value="${d.c1}" oninput="calculateImpulse()" style="width:100%; padding:5px; box-sizing:border-box;">
+                <input type="number" id="c2_${i}" value="${d.c2}" oninput="calculateImpulse()" style="width:100%; padding:5px; box-sizing:border-box;">
+                <input type="number" id="r1_${i}" value="${d.r1}" oninput="calculateImpulse()" style="width:100%; padding:5px; box-sizing:border-box;">
+                <input type="number" id="r2_${i}" value="${d.r2}" oninput="calculateImpulse()" style="width:100%; padding:5px; box-sizing:border-box;">
+                <input type="number" id="maxv_${i}" value="${d.mv}" oninput="calculateImpulse()" style="width:100%; padding:5px; box-sizing:border-box; border-color:#ffcdd2;">
+                <span id="voltage_${i}" style="color:#ffffff; background:#000; padding:4px; border-radius:3px; font-size:0.8rem; text-align:right; font-family:monospace;">0.0 kV</span>
+              `;
+              wrapper.appendChild(row);
+             } 
+           calculateImpulse();
+         }
+
+        function calculateImpulse() {
+            const numStages = parseInt(document.getElementById('row-select').value) || 0;
+            const testV = parseFloat(document.getElementById('test_v_kv').value) || 0;
+            const totalCapUf = (parseFloat(document.getElementById('total_cap_nf').value) || 0) / 1000;
+            const tR1 = parseFloat(document.getElementById('term_r1').value) || 0;
+            const tR2 = parseFloat(document.getElementById('term_r2').value) || 0;
+            const dC1 = parseFloat(document.getElementById('def_c1').value) || 0;
+            const dC2 = parseFloat(document.getElementById('def_c2').value) || 0;
+
+            let sR1 = 0, sR2 = 0;
+            for (let i = 1; i <= numStages; i++) {
+                sR1 += parseFloat(document.getElementById(`r1_${i}`).value) || 0;
+                sR2 += parseFloat(document.getElementById(`r2_${i}`).value) || 0;
+            }
+
+            const sR1R2 = sR1 + sR2;
+            const combTR = (tR1 > 0 && tR2 > 0) ? (tR1 * tR2)/(tR1 + tR2) : (tR1 + tR2);
+            const combAllR = (sR1R2 > 0 && combTR > 0) ? (sR1R2 * combTR)/(sR1R2 + combTR) : (sR1R2 + combTR);
+ 
+            let seriesC1 = 0;
+            if (dC1 > 0 && dC2 === 0) {
+                seriesC1 = dC1 / numStages;
+            } else if (dC1 > 0 && dC2 > 0) {
+                seriesC1 = (dC1 * dC2)/(dC1 + dC2) / numStages;
+            }
+            
+            let n_dec = 0;
+            if (numStages > 0 && seriesC1 > 0) {
+                n_dec = (seriesC1 / (seriesC1 + totalCapUf)) * (combAllR / (combAllR + sR1 || 1));
+            }
+
+            let anyWarn = false;
+            const adjV = testV / (n_dec > 0.01 ? n_dec : 1);
+
+            for (let i = 1; i <= numStages; i++) {
+                const r1 = parseFloat(document.getElementById(`r1_${i}`).value) || 0;
+                const r2 = parseFloat(document.getElementById(`r2_${i}`).value) || 0;
+                const mv = parseFloat(document.getElementById(`maxv_${i}`).value) || 0;
+                const vD = document.getElementById(`voltage_${i}`);
+                
+                const vi = sR1R2 > 0 ? ((r1 + r2) / sR1R2) * adjV : 0;
+                let statusText = vi.toFixed(1) + " kV";
+                let isError = false;
+
+                // 入力がある場合のみ判定
+                if (testV > 0 && r1 > 0 && r2 > 0) {
+                    if (vi > mv && mv > 0) isError = true;
+                    if (r1 >= r2) {
+                        statusText = vi.toFixed(1) + " NG";
+                        isError = true;
+                    }
+                }
+
+                vD.innerText = statusText;
+                if (isError) {
+                    vD.style.color = "#ff4d4d";
+                    anyWarn = true;
+                } else {
+                    vD.style.color = (vi > 0) ? "#00ff00" : "#ffffff";
+                }
+            }
+            
+            const t1 = 2.7 * totalCapUf * sR1;
+            let t1_status = { label: "NG", color: "#ff4d4d" };
+            if (t1 >= 0.84 && t1 <= 5.0) {
+                t1_status = { label: "OK", color: "#008000" };
+            }
+
+            const t2 = combAllR * 0.8 * (seriesC1 || 1);
+            let t2_status = { label: "NG", color: "#ff4d4d" };
+            if (t2 >= 40 && t2 <= 60){
+                t2_status = { label: "OK", color: "#008000" };
+            }
+
+            const res = document.getElementById('imp_result_area');
+            res.style.display = 'block';
+
+            // 試験電圧が0の時は警告を出さない
+            let warningMessage = "";
+            if (testV > 0) {
+                if (anyWarn) {
+                    warningMessage = `
+                        <div style="margin-top:12px; padding:10px; border: 2px solid #ff4d4d; border-radius:6px; color: #ff4d4d; font-weight: bold; font-size: 0.95rem; line-height: 1.5;">
+                            ⚠️ NG: Over voltage at some stages or R1 ≥ R2 detected.<br>
+                            (一部の段数で最大電圧超過、またはR1がR2以上となっているためNGです)
+                        </div>`;
+                } else {
+                    warningMessage = `
+                        <div style="margin-top:12px; color: #008000; font-weight: bold; font-size: 0.95rem;">
+                            ✅ All conditions are satisfied. (すべての条件を満たしています)
+                        </div>`;
+                }
+            }
+
+            res.innerHTML = `
+                <div style="font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; color: #008000;">
+                    <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>Estimated Efficiency η [%]:<b style="color:#008000; font-size:1.1rem;">${(n_dec*100).toFixed(1)}</b></span>
+                    </div>
+                    <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>T1:<b style="color:#008000; font-size:1.1rem;">${t1.toFixed(2)} μs</b></span>
+                        <span style="font-size:0.8rem; background:${testV > 0 ? t1_status.color : '#666'}; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;">${testV > 0 ? t1_status.label : '---'}</span>
+                    </div>
+                    <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>T2:<b style="color:#008000; font-size:1.1rem;">${t2.toFixed(1)} μs</b></span>
+                        <span style="font-size:0.8rem; background:${testV > 0 ? t2_status.color : '#666'}; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;">${testV > 0 ? t2_status.label : '---'}</span>
+                    </div>
+                    <p style="margin-bottom:8px; font-size:1.1rem;">
+                        Status: ${testV > 0 ? (anyWarn ? '<span style="color:#ff4d4d;">Attention Required</span>' : '<span style="color:#008000;">Within the Rated Value</span>') : '<span style="color:#666;">Waiting for Input</span>'}
+                    </p>
+                    ${warningMessage}
+                </div>`;
+
+            const debugArea = document.getElementById('debug-content');
+            if(debugArea) {
+                debugArea.innerHTML = `SeriesC1: ${seriesC1.toFixed(4)} uF | Eff: ${n_dec.toFixed(4)}`;
+            }
+        }
+
+
+
+
+
+                
+       function sendContactEmailIMP() {
+         // Get Input Values
+          const cap = document.getElementById('total_cap_nf').value || "---";
+          const kv = document.getElementById('test_v_kv').value || "---";
+          const stages = document.getElementById('row-select').value || "---";
+
+          // Get Calculation Results from the result area
+           const resArea = document.getElementById('imp_result_area');
+           let resultsText = "";
+          if (resArea && resArea.innerText) {
+               resultsText = resArea.innerText.replace(/\n\s*\n/g, '\n'); 
+           }
+
+         const subject = encodeURIComponent("Inquiry regarding Impulse Test Configuration / インパルス試験構成の相談");
+    
+          // Construct Email Body (English followed by Japanese)
+          let bodyText = `Inquiry regarding the following Impulse Test calculation results:\n`;
+          　bodyText += `インパルス試験の計算結果に基づき、以下の通り相談いたします。\n\n`;
+    
+            bodyText += `[Input Conditions / 入力条件]\n`;
+            bodyText += `- Capacitance / 試料静電容量: ${cap} nF\n`;
+            bodyText += `- Test Voltage / 試験電圧: ${kv} kV\n`;
+            bodyText += `- Number of Stages / 使用段数: ${stages}\n\n`;
+    
+            bodyText += `[Calculation Results / 計算結果]\n`;
+            bodyText += `${resultsText}\n\n`;
+　　     　 bodyText += `【Important Notice/ご注意】\n`;
+            bodyText += `This calculation is an estimated value based on an ideal circuit. Actual test results may differ due to effects such as ground resistance, stray capacitance, and wiring inductance.\n`; 
+            bodyText += `※本計算は理想回路に基づいた推定値です。実際の試験では接地抵抗、浮遊容量、配線インダクタンスの影響により波形が異なる場合があります。\n\n`;                            
+            bodyText += `Please provide a detailed analysis and review of these parameters.\n`;
+            bodyText += `上記内容について、詳細な解析・検討をお願いいたします。\n`;
+            bodyText += `Synthesis Technologies`;       
+　　　　　　　　
+            const mailtoLink = `mailto:synthesis.nd1@gmail.com?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+            //新しいタブでメール起動
+            window.open(mailtoLink, '_blank');
+         }
+
+　　　　//初期値10段で
+        window.onload = () => {
+            const sel = document.getElementById('row-select');
+            for(let i=1;i<=30;i++) sel.options.add(new Option(i + " Stage", i));
+            sel.value = 10;
+            generateRows();
+        };
+    </script>
+</body>
+</html>

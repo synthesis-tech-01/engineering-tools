@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Heating Cycle Current Calculation</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        /* 既存のスタイルを保持 */
+        #pdf-area { background: white !important; color: black !important; }
+        .calc-card {
+            page-break-inside: avoid;
+            break-inside: avoid;
+            background-color: white;
+            border: 1px solid #ccc;
+            margin-bottom: 20px;
+            padding: 15px;
+        }
+        .input-grid-dc {
+            display: flex;
+            gap: 20px;
+            margin-bottom: 20px;
+        }
+        
+        .pdf-temp-output {
+            font-weight: bold;
+            color: blue;
+            border-bottom: 1px solid #000;
+            padding: 0 10px;
+            font-size: 1.5em;
+        }
+        .input-grid-dc {
+        display: grid;
+        /* 2列にする（1fr 1fr は等幅の指定） */
+        grid-template-columns: 1fr 1fr 1fr; 
+        /* 5行にする（各行の高さは自動調整） */
+        grid-template-rows: repeat(5, auto); 
+        /* 項目間の隙間 */
+        gap: 15px 20px; 
+        max-width: 800px;
+    }
+    </style>
+</head>
+<body onload="calcCurrent()">
+    
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    
+    <div class="container">
+        <a href="index.html" class="btn btn-back">← Back to TOP</a>
+        
+        <div id="pdf-area">
+            <div class="calc-card">
+                <h2>Heating Cycle Current Calculation / 通電電流計算</h2>
+
+                
+                <div style="display: flex; justify-content: center; gap: 20px; width: 100%; text-align: center;">
+ 　         　    <div style="flex: 1; max-width: 400px;">
+    　　　         <div style="font-weight: bold; margin-bottom: 8px;">Cable Single Conductor / 単導体</div>
+　　　　　            <img src="CableSinglecore.png" style="width: 100%; height: auto; display: block;" alt="Charge">
+　　　　         </div>
+
+　　　　         <div style="flex: 1; max-width: 400px;">
+ 　　　　           <div style="font-weight: bold; margin-bottom: 8px;">Cable Separated Conductor / 分割導体</div>
+    　　　            <img src="CableSeparatedcore.png" style="width: 100%; height: auto; display: block;" alt="Discharge">
+　　　　　      </div>
+　　　         </div>    
+
+
+                
+                <div class="input-grid-dc">
+                    <div>
+                        <label>Ambient Temperture / 気温 [℃]</label>
+                        <input type="number" id="ambient_temp" oninput="calcCurrent()" placeholder="e.g. 20.0">
+                    </div>
+                    <div>
+                        <label>Target Temperture / 目標温度 [℃]</label>
+                        <input type="number" id="target_temp" oninput="calcCurrent()" placeholder="e.g. 95.0">
+                    </div>
+                    
+                　　<div>
+    　　　　　　　　　　<label>Type of Conductor / 導体種別</label>
+  　　　　　　　　　　  <select id="type_conductor" onchange="calcCurrent()">
+   　　　　　　　　     <option value="0.00393">Copper / 銅 (0.00393)</option>
+       　　　　　　　　 <option value="0.00400">Aluminum / アルミ (0.00400)</option>
+    　　　　　　　　　　</select>
+　　　　　　　　　　</div>
+
+                    <div>
+    　　　　　　　　　　 <label>Skin Effect Single / 表皮効果 </label>
+  　　　　　　　　　　  <select id="skin_effect" onchange="calcCurrent()">
+   　　　　　　　　     <option value="1.0">Single / 単芯(1.0)</option>
+       　　　　　　　　 <option value="0.6">Separated / 分割(0.6)</option>
+                        <option value="0.3">Insulated / 素線絶縁(0.3)</option>
+    　　　　　　　　　　</select>
+　　　　　　　　　　</div>
+                        
+                    <div>
+                        <label>Specification of Conductor Resistance / 導体抵抗 [Ω/km 20℃]</label>
+                        <input type="number" id="cond_res" oninput="calcCurrent()" placeholder="e.g. 0.0072">
+                    </div>
+
+                    <div>
+                        <label>Cunductor Diameter / 導体外径 [mm]</label>
+                        <input type="number" id="cond_dia" oninput="calcCurrent()" placeholder="e.g. 40.0">
+                    </div>
+                    
+                    <div>
+                        <label>Insulation Diameter / 絶縁体外径 [mm]</label>
+                        <input type="number" id="ins_dia" oninput="calcCurrent()" placeholder="e.g. 78.0">
+                    </div>
+                    
+                     <div>
+                        <label>Thermal Resistance of Insulator / 絶縁体の熱抵抗 [℃/W]</label>
+                        <input type="number" id="ins_therm_res" oninput="calcCurrent()" value="350" placeholder="e.g. 350"　>
+                    </div>
+                    
+                    <div>
+                        <label>Sheath Diameter / 遮蔽層外径 [mm]</label>
+                        <input type="number" id="sheath_dia" oninput="calcCurrent()" placeholder="e.g. 83.0">
+                    </div>
+                    
+                    <div>
+                        <label>Outer Sheath Diameter / 防食層外径 [mm]</label>
+                        <input type="number" id="out_sheath_dia" oninput="calcCurrent()" placeholder="e.g. 100.0">
+                    </div>
+                    
+                    <div>
+                        <label>Thermal Resistance of Outer Sheath / 防食層の熱抵抗 [℃/W]</label>
+                        <input type="number" id="out_sheath_therm_res" oninput="calcCurrent()" value="350" placeholder="e.g. 350">
+                    </div>
+                    
+                    <div>
+                        <label>Surface Dissipation / 表面放熱 [℃/W]</label>
+                        <input type="number" id="surface_dissipation" oninput="calcCurrent()" value="900" placeholder="e.g. 900">
+                    </div>
+                </div> 
+
+                <label>Current / 電流 [A]</label>
+                <div class="formula-text">Formula: Conductor Resistance of Target Temparature r = r0 · k1 · k2 [Ω/cm]</div>
+                <div class="formula-text">Formula: Heat Resistance of Insulation R1 = (P1/2π)·loge(d2/d1)[℃/W]</div>
+                <div class="formula-text">Formula: Heat Resistance of Outersheath R2 = (P2/2π)·loge(d4/d3)[℃/W]</div>
+                <div class="formula-text">Formula: Heat Resistance of Surface Dissipation R3 = 10P3/πd4[℃/W]</div>
+                <div class="formula-text">Formula: Heat Resistance of All Rth = R1 + R2 + R3 [℃/W]</div>
+                <div class="formula-text">Formula: Curret I = SQRT((T1-T2)/(r x Rth))[A]</div>
+                
+                
+                <div id="heating_result" class="result-box" style="font-size :1.5em; background-color: black; color:green; padding: 10px; border-radius: 4px; border: 1px; solid #eee; min-height: 50px;">
+                    0.0 A
+                </div>
+
+                <div style="width: 100%; margin-top: 20px;">
+    　　　　　　　　<canvas id="currentChart"></canvas>
+　　　　　　　　</div>
+            </div>
+        </div>   
+
+        <button class="btn btn-pdf" onclick="window.print();">PDF Report Export</button> 
+
+        <button class="btn btn-main" style="margin-top: 10px; background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px;" onclick="sendContactEmailHeating()">
+            Inquiry for Detailed Analysis (Open Email)/詳細な検討をお問い合わせ（メール起動）
+        </button>
+    </div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+
+<script>
+        let myChart = null; // チャート保持用
+
+        function calcCurrent() {
+            const T2 = parseFloat(document.getElementById('ambient_temp').value) || 0;
+            const T1 = parseFloat(document.getElementById('target_temp').value) || 0;
+            const alpha = parseFloat(document.getElementById('type_conductor').value) || 0;
+            const skinEffect = parseFloat(document.getElementById('skin_effect').value) || 0;
+            const r20 = parseFloat(document.getElementById('cond_res').value) || 0;
+            const d1 = parseFloat(document.getElementById('cond_dia').value) || 0;
+            const d2 = parseFloat(document.getElementById('ins_dia').value) || 0;
+            const p1 = parseFloat(document.getElementById('ins_therm_res').value) || 0;
+            const d3 = parseFloat(document.getElementById('sheath_dia').value) || 0;
+            const d4 = parseFloat(document.getElementById('out_sheath_dia').value) || 0;
+            const p2 = parseFloat(document.getElementById('out_sheath_therm_res').value) || 0;
+            const p3 = parseFloat(document.getElementById('surface_dissipation').value) || 0;
+
+            const resEl = document.getElementById('heating_result');
+
+            if (T1 > 0 && r20 > 0 && d1 > 0 && d2 > 0 && d4 > 0) {
+                const r0_cm = r20 * 1e-5;
+                const r = r0_cm * (1 + alpha * (T1 - 20)) * (1 + skinEffect);
+                const R1 = (p1 / (2 * Math.PI)) * Math.log(d2 / d1);
+                const R2 = (p2 / (2 * Math.PI)) * Math.log(d4 / d3);
+                const R3 = 0.8 * (10 * p3) / (Math.PI * d4);
+                const Rth = R1 + R2 + R3;
+
+                let currentInf = 0;
+                if (r * Rth > 0) {
+                    currentInf = Math.sqrt((T1 - T2) / (r * Rth));
+                }
+
+                let tableRows = "";
+                const hours = Array.from({length: 24}, (_, i) => i + 1);
+                const dataValues = [];
+
+                hours.forEach(h => {
+                    const timeFactor = 1 - Math.exp((-1 / 2.718282) * h);
+                    let currentAtTime = timeFactor > 0 ? currentInf / Math.sqrt(timeFactor) : 0;
+                    //let currentAtTime = timeFactor > 0 ? currentInf / timeFactor : 0;
+                    dataValues.push(currentAtTime.toFixed(1));
+
+                    tableRows += `
+                        <tr style="border-bottom: 1px solid #008000;">
+                            <td style="padding: 8px; border: 1px solid #008000;">${h} hr</td>
+                            <td style="padding: 8px; text-align: right; font-weight: bold; border: 1px solid        #008000;">${currentAtTime.toFixed(1)} A</td>
+                        </tr>`;
+                        });
+
+                resEl.innerHTML = `
+                        <div style="color: #008000; font-family: sans-serif; padding: 10px;">
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-size: 1.0em; font-weight: bold; border-bottom: 2px solid #008000; padding-bottom: 10px; margin-bottom: 15px;">
+                        <div>r: ${r.toExponential(4)} Ω/cm</div>
+                        <div>R1: ${R1.toFixed(3)} ℃/W</div>
+                        <div>R2: ${R2.toFixed(3)} ℃/W</div>
+                        <div>R3: ${R3.toFixed(3)} ℃/W</div>
+                        <div style="grid-column: span 2;">Total Rth: ${Rth.toFixed(3)} ℃/W</div>
+                    </div>
+                    <div style="text-align: center; border: 1px solid #008000; padding: 15px; border-radius: 8px; margin-bottom: 20px;">
+                    <div style="font-size: 1.0em; font-weight: bold;">Steady State Current (∞)</div>
+                    <div style="font-size: 1.0em; font-weight: bold;">${currentInf.toFixed(1)} A</div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <div style="font-size: 1.0em; font-weight: bold; border-left: 5px solid #008000; padding-left: 10px; margin-bottom: 10px;">Target Current by Reach Time /目標到達時間別の必要電流</div>
+                    <table style="width: 100%; border-collapse: collapse; border: 1px solid #008000;">
+                        <thead style="background-color: #f0fff0;">
+                            <tr><th style="padding: 8px; border: 1px solid #008000;">Time (hr)</th><th style="padding: 8px; border: 1px solid #008000;">Current (A)</th></tr>
+                        </thead>
+                        <tbody>${tableRows}</tbody>
+                    </table>
+                </div>
+            </div>`;
+
+        // グラフ描画
+        const canvas = document.getElementById('currentChart');
+        if (canvas) {
+            const ctx = canvas.getContext('2d');
+            if (myChart) { myChart.destroy(); }
+            myChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: hours.map(h => h + "h"),
+                    datasets: [{
+                        label: 'Required Current (A)',
+                        data: dataValues,
+                        borderColor: '#008000',
+                        backgroundColor: 'rgba(0, 128, 0, 0.1)',
+                        fill: true,
+                        tension: 0.4
+                    }]
+                },
+                options: {
+                    scales: {
+                        y: { ticks: { color: '#008000' } },
+                        x: { ticks: { color: '#008000' } }
+                    },
+                    plugins: { legend: { labels: { color: '#008000' } } }
+                }
+            });
+        }
+    } else {
+        resEl.innerHTML = "Waiting for inputs...";
+    }
+}
+
+
+
+
+        function sendContactEmailHeating() {
+            // 1. 各入力値の取得
+            const ambientTemp = document.getElementById('ambient_temp').value || "未入力";
+            const targetTemp = document.getElementById('target_temp').value || "未入力";
+            const conductorType =       document.getElementById('type_conductor').options[document.getElementById('type_conductor').selectedIndex].text;
+            const skinEffect = document.getElementById('skin_effect').options[document.getElementById('skin_effect').selectedIndex].text;
+            const condRes = document.getElementById('cond_res').value || "未入力";
+            const condDia = document.getElementById('cond_dia').value || "未入力";
+            const insDia = document.getElementById('ins_dia').value || "未入力";
+            const insThermRes = document.getElementById('ins_therm_res').value || "未入力";
+            const sheathDia = document.getElementById('sheath_dia').value || "未入力";
+            const outSheathDia = document.getElementById('out_sheath_dia').value || "未入力";
+            const outSheathThermRes = document.getElementById('out_sheath_therm_res').value || "未入力";
+            const surfaceDiss = document.getElementById('surface_dissipation').value || "未入力";
+
+            // 2. 計算結果の取得（表示されているテキストを取得）
+            const resultBox = document.getElementById('heating_result').innerText;
+
+            // 3. メール本文の作成
+            const subject = encodeURIComponent("Consultation Regarding Heating Cycle Current Analysis");
+            let bodyText = `Please consider the Heating Cycle Current Analysis\n\n`;
+            bodyText += `--- Input Parameters/入力パラメータ ---\n`;
+            bodyText += `Ambient Temperature: ${ambientTemp} [℃]\n`;
+            bodyText += `Target Temperature: ${targetTemp} [℃]\n`;
+            bodyText += `Conductor Type: ${conductorType}\n`;
+            bodyText += `Skin Effect: ${skinEffect}\n`;
+            bodyText += `Conductor Resistance (20℃): ${condRes} [Ω/km]\n`;
+            bodyText += `Conductor Diameter: ${condDia} [mm]\n`;
+            bodyText += `Insulation Diameter: ${insDia} [mm]\n`;
+            bodyText += `Thermal Resistance (Ins): ${insThermRes} [℃/W]\n`;
+            bodyText += `Sheath Diameter: ${sheathDia} [mm]\n`;
+            bodyText += `Outer Sheath Diameter: ${outSheathDia} [mm]\n`;
+            bodyText += `Thermal Resistance (Outer): ${outSheathThermRes} [℃/W]\n`;
+            bodyText += `Surface Dissipation: ${surfaceDiss} [℃/W]\n\n`;
+    
+            bodyText += `--- Result/計算結果 ---\n`;
+            bodyText += `${resultBox}\n\n`;
+            bodyText += `----------------------\n`;
+            bodyText += `Please enter any additional considerations./追加の検討事項をご記入ください：\n`;
+            bodyText += `Synthesis Technologies`;
+            const body = encodeURIComponent(bodyText);
+
+            // 4. メーラーの起動 (宛先メールアドレスを必要に応じて書き換えてください)
+            //const mailToAddress = "synthesis.nd1@gmail.com"; 
+            const mailtoUrl = `mailto:synthesis.nd1@gmail.com?subject=${subject}&body=${body}`;
+  　        window.open(mailtoUrl, '_blank');
+         } // 関数を閉じる
+</script>
+</body>
+</html>

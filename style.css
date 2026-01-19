@@ -1,0 +1,137 @@
+:root {
+    --primary: #0056b3;
+    --dark: #003366;
+    --bg: #f4f7f9;
+    --card: #ffffff;
+}
+
+body { 
+    font-family: 'Segoe UI', Arial, sans-serif; 
+    background: var(--bg); 
+    color: #333; 
+    margin: 0; 
+    padding: 20px; 
+    line-height: 1.6; 
+}
+
+.container { max-width: 900px; margin: auto; }
+
+/* メニューカード：青色フォント設定 */
+.menu-card { 
+    background: var(--card); 
+    padding: 40px; 
+    border-radius: 15px; 
+    width: 250px;
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+    cursor: pointer; 
+    transition: 0.3s;
+    /* 通常時の文字色をメインの青に統一 */
+    color: var(--primary); 
+    margin: 10px;
+    display: inline-block;
+}
+
+.menu-card h2, .menu-card p {
+    color: inherit; /* 親要素の青色を引き継ぐ */
+    margin-top: 0;
+}
+
+.menu-card:hover { 
+    transform: translateY(-10px); 
+    background: var(--primary); 
+    color: white; /* ホバー時のみ白抜き */
+}
+
+/* 計算カード設定 */
+.calc-card { 
+    background: var(--card); 
+    padding: 20px; 
+    border-radius: 12px; 
+    box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
+    margin-bottom: 20px; 
+}
+
+h2 { 
+    border-left: 5px solid var(--primary); 
+    padding-left: 15px; 
+    color: var(--dark); 
+    font-size: 1.4rem; 
+}
+
+/* 入力エリア：PDF出力時も崩れにくいFlex配置に統一 */
+.input-grid { 
+    display: flex !important;
+    flex-wrap: wrap;
+    gap: 15px;
+    margin-bottom: 20px;
+    align-items: flex-end;
+}
+
+.input-grid > div {
+    flex: 1;
+    min-width: 200px; /* 狭くなりすぎないよう調整 */
+}
+
+label { 
+    display: block; 
+    font-size: 1rem; 
+    font-weight: bold; 
+    color: var(--primary); /* ラベルも青系にすると統一感が出ます */
+    margin-bottom: 8px; 
+}
+
+input, select { 
+    width: 100%; 
+    padding: 10px; 
+    border: 2px solid #eee; /* 少し太めのボーダー */
+    border-radius: 6px; 
+    box-sizing: border-box;
+    font-size: 1rem;
+}
+
+input:focus {
+    border-color: var(--primary);
+    outline: none;
+}
+
+/* ボタン類 */
+.btn { 
+    padding: 12px 20px; 
+    border: none; 
+    border-radius: 6px; 
+    cursor: pointer; 
+    font-weight: bold; 
+    transition: 0.3s; 
+    text-decoration: none; 
+    display: inline-block; 
+    text-align: center; 
+}
+
+.btn-pdf { background: #dc3545; color: white; width: 100%; margin-top: 10px; }
+.btn-back { background: #6c757d; color: white; margin-bottom: 20px; }
+.btn:hover { opacity: 0.8; transform: translateY(-1px); }
+
+/* 結果表示 */
+.result-box { 
+    background: #1a1a1a; 
+    color: #0f0; 
+    padding: 15px; 
+    border-radius: 8px; 
+    font-family: monospace; 
+    margin-top: 10px; 
+    min-height: 1.2em;
+}
+
+/* インパルス試験用のグリッド設定 */
+.imp-header, .imp-row {
+    display: grid !important;
+    grid-template-columns: 45px 1fr 1fr 1fr 1fr 1fr 90px;
+    gap: 5px;
+    align-items: center;
+    padding: 8px 5px;
+}
+
+@media print {
+    .btn, .btn-back { display: none !important; } /* ボタンを隠す */
+    input { border: none !important; color: #008000 !important; font-weight: bold; } /* 入力欄をテキスト化 */
+}
