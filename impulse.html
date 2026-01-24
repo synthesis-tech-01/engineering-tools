@@ -38,9 +38,9 @@
                 </div>
              </div>    
           
-            <div style="background: linear-gradient(145deg, #ffffff, #fff4e5); padding: 5px; border-radius: 5px; border: 2px solid #ffcc80; margin-bottom: 5px; display: flex; gap: 5px;">
+            <div style="background: linear-gradient(145deg, #ffffff, #fff4e5); padding: 5px; margin-top: 10px;border-radius: 5px; border: 2px solid #ffcc80; margin-bottom: 5px; display: flex; gap: 5px;">
                 <div style="flex: 1;">
-                    <label class="label-ja">Capacitance/試料静電容量 [nF]</label>
+                    <label class="label-ja">Test Object Capacitance/試料静電容量 [nF]</label>
                     <input type="number" id="total_cap_nf" placeholder="nF" oninput="calculateImpulse()">
                 </div>
                 
@@ -71,11 +71,18 @@
                 </div>
             </div>
 
-            <div class="input-group">
-                <label class="label-ja">Stages/段数</label>
-                <select id="row-select" onchange="generateRows()"></select>
+            <div class="input-group" style="margin-bottom: 5px;"> <label class="label-ja">Stages/段数</label>
+                 <select id="row-select" onchange="generateRows()"></select>
             </div>
        </div>
+
+    　 <div class="imp-section" style="margin-top: 10px; margin-bottom: 20px; font-family: sans-serif;">
+                <h3 style="border-left: 5px solid #333; padding: 5px 15px; margin-bottom: 10px; font-size: 1.1rem; color: #333;">
+                    Impulse Generator Configuration
+                <small style="display: block; font-size: 0.7rem; color: #666; font-weight: normal; margin-top: 4px;">
+                    段数および回路定数に基づく発生電圧のシミュレーション
+                </small>
+                </h3>
             
             <div class="imp-header" style="display: grid; grid-template-columns: 45px 1fr 1fr 1fr 1fr 1fr 90px; gap: 5px; background: #333; color: white; padding: 10px 5px; text-align: center; font-size: 0.8rem; font-weight: bold; border-radius: 8px 8px 0 0;">
                 <div>St.</div>
@@ -86,17 +93,20 @@
                 <div style="color:#ff8a80">Max kV</div>
                 <div>Stage kV</div>
             </div>
-
+        </div>
+            
             <div id="rows-wrapper" style="border: 1px solid #ddd; border-top: none; max-height: 350px; overflow-y: auto; margin-bottom: 5px; display: flex; flex-direction: column-reverse;"></div>
 
             <div id="imp_result_area" class="result-box"></div>
-                <button class="btn btn-pdf btn-wide-action" onclick="window.print();">PDF Report Export</button>
+                <button class="btn btn-pdf btn-wide-action" style="margin-top: 10px; display: block; width: 100%;" 　　onclick="window.print();">
+    　　　　　　　PDF Report Export
+　　　　　　　　</button>
 
-                <button class="btn btn-main" style="margin-top: 10px; background: #28a745; color: white; border: none; padding: 10px 20px; cursor: pointer; border-radius: 4px;" onclick="sendContactEmailIMP()">
+                <button class="btn btn-main" style="margin-top: 10px; background: #28a745; color: white; border: 10px; padding: 10px 20px; cursor: pointer; border-radius: 4px;" onclick="sendContactEmailIMP()">
                 Inquiry for Detailed Analysis (Open Email)/詳細な検討をお問い合わせ（メール起動）
                 </button>
 
-            <div id="contact-area" style="margin-bottom: 20px; padding: 12px; background: #fff9db; border: 1px solid #ffec99; border-radius: 1px;">
+            <div id="contact-area" style="margin-top: 10px; margin-bottom: 20px; padding: 12px; background: #fff9db; border: 1px solid #ffec99; border-radius: 1px;">
                 <p style="font-size: 0.85rem; color: #555; line-height: 1.5; margin-bottom: 10px;">
                 <strong style="color: #d9534f;">【Important Notice/ご注意】</strong><br>
                    This calculation is an estimated value based on an ideal circuit. Actual test results may differ due to effects such as ground resistance, stray capacitance, and wiring inductance.

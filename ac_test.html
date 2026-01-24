@@ -28,7 +28,7 @@
                     <div><label>Frequency [Hz]</label><select id="ac_f" onchange="calcAC()"><option value="50">50</option><option value="60">60</option></select></div>
                     <div><label>Test Voltage [kV]</label><input type="number" id="ac_v" placeholder="300" oninput="calcAC()"></div>
                 </div> 
-                <div id="ac_result" class="result-box"></div>
+                <div id="ac_result" class="result-box">Waiting for input...</div>
             </div>
 
             <div class="calc-card">
@@ -38,7 +38,7 @@
                     <div><label>Inductor [H]</label><input type="number" id="res_l" placeholder="16.2" oninput="calcRes()"></div>
                     <div><label>Test Voltage [kV]</label><input type="number" id="res_v" placeholder="260" oninput="calcRes()"></div>
                 </div>
-                <div id="res_result" class="result-box"></div>
+                <div id="res_result" class="result-box">Waiting for input...</div>
             </div>
         </div>   
 
