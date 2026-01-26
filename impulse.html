@@ -249,11 +249,11 @@
                         <span>Estimated Efficiency η [%]:<b style="color:#008000; font-size:1.1rem;">${(n_dec*100).toFixed(1)}</b></span>
                     </div>
                     <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>T1:<b style="color:#008000; font-size:1.1rem;">${t1.toFixed(2)} μs</b></span>
+                        <span>T1 (2.7 x total R1[Ω] x Test object C[uf]):<b style="color:#008000; font-size:1.1rem;">${t1.toFixed(2)} μs</b></span>
                         <span style="font-size:0.8rem; background:${testV > 0 ? t1_status.color : '#666'}; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;">${testV > 0 ? t1_status.label : '---'}</span>
                     </div>
                     <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>T2:<b style="color:#008000; font-size:1.1rem;">${t2.toFixed(1)} μs</b></span>
+                        <span>T2　(0.8 x (total R1 + total R2[Ω]) x serise(IG inner C + Test object C[uf]):<b style="color:#008000; font-size:1.1rem;">${t2.toFixed(1)} μs</b></span>
                         <span style="font-size:0.8rem; background:${testV > 0 ? t2_status.color : '#666'}; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;">${testV > 0 ? t2_status.label : '---'}</span>
                     </div>
                     <p style="margin-bottom:8px; font-size:1.1rem;">

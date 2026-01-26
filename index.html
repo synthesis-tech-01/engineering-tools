@@ -16,24 +16,31 @@
         box-shadow: 0 4px 15px rgba(0,0,0,0.1); 
         cursor: pointer; 
         transition: 0.3s;
-        /* --- ここを修正：通常時の文字色を青にする --- */
+        /* 通常時の文字色 */
         color: #0056b3; 
     }
 
-    /* カード内のタイトルと説明文の色を親要素(青)に合わせる */
     .menu-card h2, .menu-card p {
         color: inherit;
         margin: 10px 0;
     }
 
-    .menu-card:hover { 
+    /* 無効化されていないカードだけ、ホバー時に青く浮き上がる */
+    .menu-card:not(.disabled):hover { 
         transform: translateY(-10px); 
         background: #0056b3; 
-        /* マウスを重ねた時は背景が青くなるので、文字は白にする */
         color: white; 
     }
 
-    /* メインタイトルの色（任意で青系に変更） */
+    /* --- インパルス波形解析専用：色抜きと無効化 --- */
+    .menu-card.disabled {
+        background: #e0e0e0;      /* グレーアウト（色抜き） */
+        color: #888888;           /* 文字色を薄く */
+        cursor: not-allowed;      /* 禁止カーソル */
+        pointer-events: none;     /* クリック無効 */
+        box-shadow: none;         /* 影を消す */
+    }
+
     h1 { color: #003366; margin-bottom: 40px; }
 </style>
 </head>
@@ -59,6 +66,10 @@
         <div class="menu-card" onclick="location.href='water_test.html'">
             <h2>Water Termination Operation</h2>
             <p>水端末運転</p>
+        </div>
+        <div class="menu-card" onclick="location.href='impulse_wave.html'">
+            <h2>Impulse Wave Analyze</h2>
+            <p>インパルス波形解析</p>
         </div>
     </div>
 </body>

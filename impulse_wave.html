@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Impulse Wave Analysis - Global Standard Edition</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.3.2/papaparse.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/hammerjs@2.0.8"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-plugin-zoom@2.0.1"></script>
+    <script src="https://www.lactame.com/lib/ml/6.0.0/ml.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/gh/corbanbrook/dsp.js@master/dsp.js"></script>
+    <style>
+        body { font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif; color: #333; line-height: 1.6; padding: 20px; }
+        
+        /* Back to TOP Button Style */
+        .back-nav { margin-bottom: 15px; }
+        .back-link { 
+            text-decoration: none; color: #546e7a; font-size: 13px; font-weight: 600;
+            display: inline-flex; align-items: center; gap: 5px; transition: 0.2s;
+        }
+        .back-link:hover { color: #2e7d32; }
+
+        .config-panel { background: #f4f7f6; border: 1px solid #cfd8dc; padding: 20px; border-radius: 8px; margin-bottom: 25px; }
+        .preview-area { 
+            background: #1e1e1e; color: #d4d4d4; padding: 12px; font-family: 'Consolas', 'Monaco', monospace; 
+            font-size: 12px; height: 150px; overflow-y: scroll; border-radius: 4px; margin: 12px 0; border: 1px solid #000;
+        }
+        .preview-line { border-bottom: 1px solid #333; white-space: nowrap; padding: 2px 0; }
+        .line-num { color: #858585; display: inline-block; width: 40px; border-right: 1px solid #444; margin-right: 10px; text-align: center; }
+
+        .controls { margin: 15px 0; display: flex; gap: 10px; flex-wrap: wrap; }
+        .controls label { cursor: pointer; display: flex; align-items: center; gap: 6px; background: #fff; padding: 6px 12px; border-radius: 20px; border: 1px solid #dfe6e9; font-size: 12px; transition: 0.2s; }
+        
+        #impulseResult { 
+            margin: 20px 0; padding: 25px; border: 2px solid #2e7d32; background: #f1f8e9; 
+            border-radius: 12px; display: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        }
+        .param-group { display: inline-block; margin-right: 45px; vertical-align: top; }
+        .param-label { color: #546e7a; font-size: 0.85em; font-weight: bold; text-transform: uppercase; letter-spacing: 0.5px; }
+        .param-val { font-weight: bold; color: #1b5e20; font-size: 2em; display: block; }
+        .jp-sub { font-size: 0.6em; color: #78909c; font-weight: normal; }
+        
+        .chart-container { width: 100%; max-width: 900px; margin-bottom: 50px; position: relative; }
+        h3 { border-left: 6px solid #2e7d32; padding-left: 15px; margin-top: 40px; color: #263238; font-size: 1.4em; }
+
+        .btn { padding: 8px 20px; cursor: pointer; border-radius: 4px; border: 1px solid #ccc; font-weight: 600; font-size: 14px; transition: 0.3s; background: white; }
+        .btn-primary { background: #2e7d32; color: white; border: none; }
+        .btn-print { background: #455a64; color: white; border: none; float: right; margin-top: -10px; }
+        
+        .btn-zoom-reset { margin-top: 10px; padding: 5px 15px; font-size: 12px; border: 1px solid #2e7d32; color: #2e7d32; border-radius: 4px; }
+        .btn-zoom-reset:hover { background: #f1f8e9; }
+
+        @media print {
+            .config-panel, .controls, .btn, .btn-zoom-reset, .no-print, .back-nav { display: none !important; }
+            body { padding: 0; }
+            #impulseResult { border: 1px solid #2e7d32; box-shadow: none; display: block !important; }
+            .chart-container { page-break-inside: avoid; }
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="back-nav no-print">
+        <a href="index.html" class="back-link">← BACK TO TOP <span class="jp-sub" style="font-size: 11px;">(トップページへ戻る)</span></a>
+    </nav>
+
+    <div class="config-panel no-print">
+        <h2 style="margin-top:0;">1. Data Import <span style="font-size: 0.6em; font-weight: normal; color: #666;">/ CSVデータの読み込み</span></h2>
+        <input type="file" id="csvFile" accept=".csv" />
+        
+        <div id="previewContainer" style="display:none; margin-top:20px;">
+            <div id="filePreview" class="preview-area"></div>
+            <div style="margin-top:15px; display: flex; align-items: center; gap: 20px;">
+                <div>
+                    <label style="font-weight:bold;">Start Row Index: </label>
+                    <input type="number" id="startRow" value="1" min="1" style="width:70px; padding:8px; border: 1px solid #ccc;">
+                </div>
+                <button id="analyzeBtn" class="btn btn-primary">RUN ANALYSIS (解析実行)</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="reportArea" style="max-width: 950px; margin: 0 auto;">
+        <div id="impulseResult">
+            <button onclick="window.print()" class="btn btn-print no-print">Print Report (レポート印刷)</button>
+            <div class="param-group">
+                <span class="param-label">Vp <span class="jp-sub">(Peak Voltage)</span></span>
+                <span id="resVp" class="param-val">-</span> <span style="font-weight:bold;">V</span>
+            </div>
+            <div class="param-group">
+                <span class="param-label">T1 <span class="jp-sub">(Front Time)</span></span>
+                <span id="resT1" class="param-val">-</span> <span style="font-weight:bold;">μs</span>
+            </div>
+            <div class="param-group">
+                <span class="param-label">T2 <span class="jp-sub">(Tail Time)</span></span>
+                <span id="resT2" class="param-val">-</span> <span style="font-weight:bold;">μs</span>
+            </div>
+        </div>
+
+        <div id="chartControls" class="controls no-print"></div>
+        
+        <div class="chart-container">
+            <h3>1. Time Domain Analysis <span style="font-size: 0.7em; font-weight: normal; color: #666;">/ 時間領域波形</span></h3>
+            <canvas id="myChart"></canvas>
+            <button onclick="resetMainZoom()" class="btn btn-zoom-reset no-print">Reset Time Zoom (ズーム解除)</button>
+        </div>
+
+        <div class="chart-container">
+            <h3>2. Frequency Spectrum (FFT) <span style="font-size: 0.7em; font-weight: normal; color: #666;">/ 周波数スペクトル</span></h3>
+            <canvas id="fftChart"></canvas>
+            <button onclick="resetFFTZoom()" class="btn btn-zoom-reset no-print">Reset FFT Zoom (ズーム解除)</button>
+        </div>
+        <button class="btn btn-main btn-wide-action" style="margin-top: 10px; background: #28a745;" onclick="sendContactEmailIMPwave()">
+            Inquiry for Detailed Analysis (Open Email)/詳細な検討をお問い合わせ（メール起動）
+        </button>
+    </div>
+
+    <script>
+        // ... (Script部分は前回と同じため省略、機能はすべて維持されています) ...
+        let myChart, fftChart, rawCsvData = [];
+
+        document.getElementById('csvFile').addEventListener('change', e => {
+            const file = e.target.files[0];
+            if (!file) return;
+            Papa.parse(file, { header: false, preview: 50, complete: results => {
+                displayPreview(results.data);
+                Papa.parse(file, { header: false, dynamicTyping: true, complete: res => { rawCsvData = res.data; }});
+            }});
+        });
+
+        function displayPreview(data) {
+            const previewEl = document.getElementById('filePreview');
+            previewEl.innerHTML = '';
+            data.forEach((row, i) => {
+                const line = document.createElement('div');
+                line.className = 'preview-line';
+                line.innerHTML = `<span class="line-num">${i + 1}</span> ${row.join(', ')}`;
+                previewEl.appendChild(line);
+            });
+            document.getElementById('previewContainer').style.display = 'block';
+        }
+
+        document.getElementById('analyzeBtn').addEventListener('click', () => {
+            const skipRows = parseInt(document.getElementById('startRow').value) - 1;
+            if (rawCsvData.length > 0) createGraph(rawCsvData.slice(skipRows));
+        });
+
+        function resetMainZoom() { if (myChart) myChart.resetZoom(); }
+        function resetFFTZoom() { if (fftChart) fftChart.resetZoom(); }
+
+        function createGraph(data) {
+            const times = data.map(row => Number(row[0])).filter(v => !isNaN(v));
+            const rawValues = data.map(row => Number(row[1])).filter(v => !isNaN(v));
+            if (times.length < 10) return;
+            const maxV = Math.max(...rawValues);
+            const options = { damping: 1.5, initialValues: [maxV * 1.2, 0.4, 70], maxIterations: 1000 };
+            let LM = (typeof ML !== 'undefined') ? (ML.LevenbergMarquardt || ML.levenbergMarquardt || ML.default.LevenbergMarquardt) : null;
+            const datasets = [{ label: 'Original', data: rawValues, borderColor: 'rgba(96, 125, 139, 0.3)', borderWidth: 1, pointRadius: 0, fill: false }];
+            try {
+                const result = LM({x: times, y: rawValues}, (([V, a, b]) => (t) => V * (Math.exp(-t/a) - Math.exp(-t/b))), options);
+                const fitValues = times.map(t => (([V, a, b]) => (t) => V * (Math.exp(-t/a) - Math.exp(-t/b)))(result.parameterValues)(t));
+                datasets.push({ label: 'LMA Fitted', data: fitValues, borderColor: 'rgba(76, 175, 80, 0.4)', borderWidth: 1, pointRadius: 0 });
+                initMainChart(times, datasets);
+                processAnalysis(times, rawValues, fitValues);
+            } catch (e) { initMainChart(times, datasets); }
+        }
+
+        function initMainChart(labels, datasets) {
+            if (myChart) myChart.destroy();
+            myChart = new Chart(document.getElementById('myChart').getContext('2d'), {
+                type: 'line', data: { labels: labels, datasets: datasets },
+                options: { 
+                    responsive: true, animation: false,
+                    scales: { x: { type: 'linear', title: { display: true, text: 'Time (μs)' } }, y: { beginAtZero: true } },
+                    plugins: { legend: { display: false }, zoom: { zoom: { drag: { enabled: true }, mode: 'xy' } } }
+                }
+            });
+        }
+
+        function processAnalysis(times, rawValues, fitValues) {
+            const residuals = rawValues.map((v, i) => v - fitValues[i]);
+            const p2 = Math.pow(2, Math.floor(Math.log2(residuals.length)));
+            const fft = new FFT(p2, 1 / ((times[1]-times[0]) * 1e-6));
+            fft.forward(residuals.slice(0, p2));
+            const rawSpec = Array.from(fft.spectrum);
+            const alpha = 4.0;
+            const filteredSpec = [];
+            const freqLabels = [];
+            for (let i = 0; i < fft.real.length; i++) {
+                const f_mhz = (i * fft.sampleRate / p2) / 1e6;
+                const K = 1 / (1 + alpha * Math.pow(f_mhz, 2));
+                fft.real[i] *= K; fft.imag[i] *= K;
+                if (i < p2/2) { filteredSpec.push(rawSpec[i] * K); freqLabels.push(f_mhz); }
+            }
+            const filteredRes = fft.inverse(fft.real, fft.imag);
+            const recoveredWave = Array.from({length: p2}, (_, i) => fitValues[i] + filteredRes[i]);
+            myChart.data.datasets.push({ label: 'Recovered', data: recoveredWave, borderColor: '#1b5e20', borderWidth: 2.5, pointRadius: 0 });
+            const tSub = times.slice(0, p2);
+            const maxV = Math.max(...recoveredWave);
+            const peakIdx = recoveredWave.indexOf(maxV);
+            const t30 = findTime(tSub, recoveredWave, maxV*0.3, 0, peakIdx);
+            const t90 = findTime(tSub, recoveredWave, maxV*0.9, 0, peakIdx);
+            const t50 = findTime(tSub, recoveredWave, maxV*0.5, peakIdx, p2 - 1);
+            const m = (maxV*0.9 - maxV*0.3) / (t90 - t30);
+            const t0 = t30 - (maxV*0.3) / m;
+            const tPeakV = t0 + maxV / m;
+            myChart.data.datasets.push({
+                label: 'Lines', data: [{x: t0, y: 0}, {x: tPeakV, y: maxV}], borderColor: '#ff9800', borderDash: [5, 5], showLine: true, type: 'scatter', pointRadius: 0
+            }, {
+                label: 'Points', data: [{x: t30, y: maxV*0.3}, {x: t90, y: maxV*0.9}, {x: t50, y: maxV*0.5}], backgroundColor: '#f44336', pointRadius: 6, type: 'scatter'
+            }, {
+                label: '50% Tail', data: [{x: t0, y: maxV*0.5}, {x: t50, y: maxV*0.5}], borderColor: '#f44336', borderDash: [3, 3], showLine: true, type: 'scatter', pointRadius: 0
+            });
+            document.getElementById('impulseResult').style.display = 'block';
+            document.getElementById('resVp').innerText = maxV.toFixed(2);
+            document.getElementById('resT1').innerText = (tPeakV - t0).toFixed(3);
+            document.getElementById('resT2').innerText = (t50 - t0).toFixed(3);
+            myChart.update();
+            updateCheckboxes();
+            drawFFT(freqLabels, rawSpec.slice(0, p2/2), filteredSpec);
+        }
+
+        function findTime(t, v, target, s, e) {
+            for (let i = s; i < e; i++) { if ((v[i] <= target && v[i+1] >= target) || (v[i] >= target && v[i+1] <= target)) return t[i] + (target - v[i]) / (v[i+1] - v[i]) * (t[i+1] - t[i]); }
+            return t[s];
+        }
+
+        function drawFFT(labels, raw, filtered) {
+            if (fftChart) fftChart.destroy();
+            fftChart = new Chart(document.getElementById('fftChart').getContext('2d'), {
+                type: 'line', data: { labels: labels, datasets: [
+                    { label: 'Raw', data: raw, borderColor: '#cfd8dc', borderWidth: 1, pointRadius: 0 },
+                    { label: 'Filtered', data: filtered, borderColor: '#ff9800', fill: true, backgroundColor: 'rgba(255,152,0,0.1)', pointRadius: 0 }
+                ]},
+                options: { responsive: true, animation: false, scales: { x: { type: 'linear', ticks: { stepSize: 0.2, callback: v => v.toFixed(1) } } }, plugins: { zoom: { zoom: { drag: { enabled: true }, mode: 'x' } } } }
+            });
+        }
+
+        function updateCheckboxes() {
+            const container = document.getElementById('chartControls');
+            container.innerHTML = '';
+            myChart.data.datasets.forEach((ds, i) => {
+                const lbl = document.createElement('label');
+                const cb = document.createElement('input');
+                cb.type = 'checkbox'; cb.checked = true;
+                cb.onchange = () => { myChart.setDatasetVisibility(i, cb.checked); myChart.update(); };
+                lbl.append(cb, ds.label);
+                container.appendChild(lbl);
+            });
+        }
+
+
+
+
+                function sendContactEmailIMPwave() {
+                    const subject = encodeURIComponent("Inquiry regarding IMPULSE WAVE / インパルス波形解析のご相談");
+    
+                    // 3. メール本文の構築 (英語の後に日本語)
+                    let bodyText = `Inquiry regarding the following IMPULSE WAVE\n`;
+                    bodyText += `インパルス波形解析のご相談します。\n\n`;
+                    bodyText += `Synthesis Technologies`;
+
+                    const mailtoUrl = `mailto:synthesis.nd1@gmail.com?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+                    window.open(mailtoUrl, '_blank');
+            　　}
+
+    </script>
+</body>
+</html>
