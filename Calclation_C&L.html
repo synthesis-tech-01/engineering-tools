@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+    <meta charset="UTF-8">
+    <title>Capacitance & Iuductance Calculation</title>
+    <link rel="stylesheet" href="style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <style>
+        #pdf-area { background: white !important; color: black !important; }
+        .calc-card { break-inside: avoid; margin-bottom: 20px; page-break-inside: avoid; background-color: white; border: 1px solid #ccc; padding: 15px; }
+
+        /* ここを追加：デザインは変えず文字サイズのみアップ */
+        .result-box { 
+            font-size: 20px; /* もし大きすぎたら 20px などに調整してください */
+            font-weight: bold;
+            margin-top: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn btn-back">← Back to TOP</a>
+        <div id="pdf-area">
+        <div class="calc-card">
+       <h2>Coaxial Cable Capacitance Calculation / 同軸ケーブル静電容量計算</h2>
+       <div class="input-grid">
+          <div>
+            <label>Conductor Diameter [mm]</label>
+            <input type="number" id="cal_c_conDia" placeholder="64.1" oninput="calcC()">
+         </div>
+           
+         <div>
+        <label>Sheath Diameter [mm]</label>
+        <input type="number" id="cal_c_sheDia" placeholder="112.0" oninput="calcC()">
+        </div>
+   
+        <div>
+        <label>Relative Permittivity (εr)</label>
+        <input type="number" id="cal_c_permi" placeholder="2.3" oninput="calcC()">
+        </div>
+     </div> 
+                
+      <div id="c_result" class="result-box">Waiting for input...</div>
+
+ 　　　　<h2>Air-Core Inductance Calclation/ 空芯インダクタンス計算</h2>
+         <h3>Circles Loop / 円形ループ</h3>
+
+<div class="input-grid">
+    <div>
+        <label>Conductor Diameter (D) [mm]</label>
+        <input type="number" id="ind_condia" placeholder="64" oninput="calcLsole()">
+    </div>
+    <div>
+        <label>Loop Diameter (l) [mm]</label>
+        <input type="number" id="ind_loopdia" placeholder="10000" oninput="calcLsole()">
+    </div>
+    <div>
+        <label>Number of Turns (N)</label>
+        <input type="number" id="ind_turns" placeholder="1" oninput="calcLsole()">
+    </div>
+</div>
+<div id="lsole_result" class="result-box">Waiting for input...</div>
+          
+　　
+<h3>Cabel Rectangular Loop / 四角形ループ</h3>
+
+
+<div class="input-grid">
+    <div>
+        <label>Width (w) [mm]</label>
+        <input type="number" id="rec_width" placeholder="5000" oninput="calcRecL()">
+    </div>
+    <div>
+        <label>Height (h) [mm]</label>
+        <input type="number" id="rec_height" placeholder="5000" oninput="calcRecL()">
+    </div>
+    <div>
+        <label>Conductor Diameter (d) [mm]</label>
+        <input type="number" id="rec_wire" placeholder="64" oninput="calcRecL()">
+    </div>
+    <div>
+        <label>Number of Turns (N)</label>
+        <input type="number" id="rec_turns" placeholder="1" oninput="calcRecL()">
+    </div>
+</div>
+<div id="rec_l_result" class="result-box">Waiting for input...</div>
+
+
+
+            
+            
+        <button class="btn btn-pdf btn-wide-action" onclick="window.print();">PDF Report Export</button>
+        
+        <button class="btn btn-main btn-wide-action" style="margin-top: 10px; background: #28a745;" onclick="sendContactEmailCapaInd()">
+            Inquiry for Detailed Analysis (Open Email)/詳細な検討をお問い合わせ（メール起動）
+        </button>
+    </div>
+
+    <script src="shared.js"></script>
+
+    <script>
+        // このスクリプトの中では shared.js の cableList が自由に使えます
+
+function calcC() {
+            const c = parseFloat(document.getElementById('cal_c_conDia').value) || 0;
+            const s = parseFloat(document.getElementById('cal_c_sheDia').value) || 0;
+            const p = parseFloat(document.getElementById('cal_c_permi').value) || 0;
+            const resC = document.getElementById('c_result');
+            
+            if (c > 0 && s > 0 && s > c && p > 0) {
+                const i = (0.02413 * p ) / Math.log10(s/c) ;
+                const z0 = (138 / Math.sqrt(p)) * Math.log10(s / c);
+                resC.innerHTML = `Capacitance: ${i.toFixed(3)} [uF/km] | Characteristic Impedance: ${z0.toFixed(2)} [Ω]`;
+            } else {
+                resC.innerHTML = "";
+            }
+}
+
+        
+
+function calcLsole() {
+    // 入力値の取得
+    const wireDia = parseFloat(document.getElementById('ind_condia').value) || 0;    // 導線の直径 [mm]
+    const loopDia = parseFloat(document.getElementById('ind_loopdia').value) || 0;  // ループの直径 [mm]
+    const N = parseFloat(document.getElementById('ind_turns').value) || 0;          // 巻数 (現状1回巻き想定)
+    const displayElement = document.getElementById('lsole_result');
+
+    if (wireDia > 0 && loopDia > 0 && N > 0) {
+        // 物理定数
+        const PI = Math.PI;
+        const u0 = 4 * PI * Math.pow(10, -7); // 真空の透磁率 [H/m]
+
+        // 単位換算 [mm] -> [m]
+        const R = (loopDia / 2) * 0.001; // ループの半径
+        const a = (wireDia / 2) * 0.001; // 導線の半径
+
+        // 円形ループの自己インダクタンス計算式 (1回巻き)
+        // L = u0 * R * (ln(8R/a) - 2)
+        const inductanceH = N * N * R * u0 * (Math.log((8 * R) / a) - 2);
+
+        // [H] から [μH] へ変換
+        const resultUH = inductanceH * Math.pow(10, 6);
+        
+        displayElement.innerHTML = `Inductance: <strong>${resultUH.toFixed(4)}</strong> [μH]`;
+    } else {
+        displayElement.innerHTML = "Waiting for input...";
+    }
+}
+
+        
+function calcRecL() {
+    const w = parseFloat(document.getElementById('rec_width').value) || 0;  // 幅
+    const h = parseFloat(document.getElementById('rec_height').value) || 0; // 高さ
+    const d = parseFloat(document.getElementById('rec_wire').value) || 0;   // 線径
+    const n = parseFloat(document.getElementById('rec_turns').value) || 0;  // 巻数
+    const resL = document.getElementById('rec_l_result');
+
+    if (w > 0 && h > 0 && d > 0 && n > 0) {
+        const diagonal = Math.sqrt(Math.pow(w, 2) + Math.pow(h, 2));
+        
+        // 矩形コイルのインダクタンス近似式 (μH)
+        // L = 0.0008 * N^2 * [ w * ln(2w/d) + h * ln(2h/d) + 2*diagonal - (w+h) ]
+        // ※簡易化のため自然対数 Math.log() を使用します
+        const part1 = w * Math.log((2 * w) / d);
+        const part2 = h * Math.log((2 * h) / d);
+        const l_single = 0.0004 * (part1 + part2 + 2 * diagonal - (w + h));
+        
+        // 巻数Nの影響（相互インダクタンスを考慮した概算）
+        const totalL = l_single * Math.pow(n, 1.9); // 形状により指数は微調整されますが一般的には1.9〜2程度
+
+        resL.innerHTML = `Inductance: <strong>${totalL.toFixed(3)}</strong> [μH]`;
+    } else {
+        resL.innerHTML = "Enter all values (Width, Height, Wire dia, Turns)";
+    }
+}
+
+        
+function sendContactEmailCapaInd() {
+    // 1. Capa Calculation データの取得
+    const ac_c = document.getElementById('cal_c_conDia').value || "---";
+    const ac_f = document.getElementById('cal_c_sheDia').value || "---";
+    const ac_v = document.getElementById('cal_c_permi').value || "---";
+    const ac_res = document.getElementById('c_result').innerText || "---";
+
+    // 2. Circle Inductance Calculation データの取得
+    const cir_cd = document.getElementById('ind_condia').value || "---";
+    const cir_ld = document.getElementById('ind_loopdia').value || "---";
+    const cir_t = document.getElementById('ind_turns').value || "---";
+    const cir_res = document.getElementById('lsole_result').innerText || "---";
+
+    // 3. Rectangle Inductance Calculation データの取得
+    const rec_w = document.getElementById('rec_width').value || "---";
+    const rec_h = document.getElementById('rec_height').value || "---";
+    const rec_wi = document.getElementById('rec_wire').value || "---";
+    const rec_t = document.getElementById('rec_turns').value || "---";
+    const rec_res = document.getElementById('rec_l_result').innerText || "---";
+
+    const subject = encodeURIComponent("Inquiry regarding Capacitance & Inductance Calclation / 静電容量・インダクタンス計算の相談");
+    
+    // 3. メール本文の構築 (英語の後に日本語)
+    let bodyText = `Inquiry regarding the following Capacitance & Iuductance Calculation:\n`;
+    bodyText += `静電容量・インダクタンス計算結果に基づき、以下の通り相談いたします。\n\n`;
+
+    bodyText += `[Capacitance Calculation / 静電容量計算]\n`;
+    bodyText += `- Conductor Diameter: ${ac_c} mm\n`;
+    bodyText += `- Sheath Diameter: ${ac_f} mm\n`;
+    bodyText += `- Relative Permittivity (εr): ${ac_v} \n`;
+    bodyText += `- Result: ${ac_res}\n\n`;
+
+    bodyText += `[Circles Loop Calculation / 円形ループ　インダクタンス計算]\n`;
+    bodyText += `- Conductor Diameter: ${cir_cd} mm\n`;
+    bodyText += `- Loop Diameter: ${cir_ld} mm\n`;
+    bodyText += `- Turns: ${cir_t} \n`;
+    bodyText += `- Result: ${cir_res}\n\n`;
+
+    bodyText += `[Rectangle Loop Calculation / 矩形ループ　インダクタンス計算]\n`;
+    bodyText += `- Loop Width: ${rec_w} mm\n`;
+    bodyText += `- Loop Height: ${rec_h} mm\n`;
+    bodyText += `- Conductor Diameter: ${rec_wi} mm\n`;
+    bodyText += `- Turns: ${rec_t} \n`;
+    bodyText += `- Result: ${rec_res}\n\n`;
+
+    bodyText += `Please provide a detailed analysis and review of these parameters.\n`;
+    bodyText += `上記内容について、詳細な解析・検討をお願いいたします。\n\n`;
+    bodyText += `Synthesis Technologies`;
+
+    const mailtoUrl = `mailto:synthesis.nd1@gmail.com?subject=${subject}&body=${encodeURIComponent(bodyText)}`;
+    window.open(mailtoUrl, '_blank');
+}
+
+
+ 
+    </script>
+</body>
+</html>
