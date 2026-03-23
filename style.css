@@ -169,3 +169,17 @@ input:focus {
     .btn, .btn-back { display: none !important; } /* ボタンを隠す */
     input { border: none !important; color: #008000 !important; font-weight: bold; } /* 入力欄をテキスト化 */
 }
+/* PDFボタンなど、アクションボタンの上に一律で余白を作る */
+.btn-wide-action {
+    margin-top: 25px; /* 上の要素との距離 */
+    display: block;   /* ボタンを独立した行にする */
+    width: 100%;      /* 必要に応じて横幅いっぱいに */
+}
+
+/* 計算結果ボックスの下にも少し余白を設ける */
+.result-box {
+    margin-bottom: 20px;
+    padding: 15px;
+    /* 既存のスタイル... */
+}
+
