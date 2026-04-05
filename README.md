@@ -9,9 +9,11 @@ This website provides high-precision technical calculation tools for electrical 
 * **Browser-Based:** No installation required. Perform complex fittings and analysis directly in your browser.
 * **Global Accessibility:** English-primary interface for international use.
 * ## Available Tools / 公開中のツール
-* **Impulse Waveform Fitting:** Curve fitting for impulse voltage using the Levenberg-Marquardt algorithm.
-* **High-Voltage Analysis:** Calculations for AC/DC testing and cable characteristics.
+* **High-Voltage Analysis:** Calculations for AC/DC/IMP testing and cable characteristics.
 * **Inductance Calculator:** SI unit-based (mm) solenoid and cable inductance calculations.
+* **Water Termination for power cable Analysis:** Calculations for
+* **Heating cycle for power cable :High-current Analysis:** Calculations for
+* **Impulse Waveform Fitting:** Curve fitting for impulse voltage using the Levenberg-Marquardt algorithm VB.Net(please inquiry coustomize on your windows)
 * *More tools are being added regularly.*
 * ## About the Developer / 開発者について
 I am a professional electrical engineer and software developer with extensive experience in high-voltage testing and power cable analysis. 
