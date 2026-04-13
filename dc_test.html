@@ -1,15 +1,6 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-    <!-- Google tag (gtag.js) -->
-<script async src="https://www.googletagmanager.com/gtag/js?id=G-E4B6H1NV9J"></script>
-<script>
-  window.dataLayer = window.dataLayer || [];
-  function gtag(){dataLayer.push(arguments);}
-  gtag('js', new Date());
-
-  gtag('config', 'G-E4B6H1NV9J');
-</script>
     <meta charset="UTF-8">
     <title>DC Test</title>
     <link rel="stylesheet" href="style.css">
@@ -66,6 +57,10 @@
                         <label>Test Voltage / 試験電圧 [kV]</label>
                         <input type="number" id="dc_v" oninput="calcDC()" placeholder="300">
                     </div>
+                    <div>
+                        <label>Discharger Resistance / 放電抵抗 [MΩ]</label>
+                        <input type="number" id="dc_r" oninput="calcDC()" placeholder="5">
+                    </div>
                 </div> 
 
                 <label>Energy / 電力量 [kWs]</label>
@@ -88,31 +83,60 @@
             // 入力値の取得
             const cInput = document.getElementById('dc_c').value;
             const vInput = document.getElementById('dc_v').value;
+            const rInput = document.getElementById('dc_r').value;
             
             const c = parseFloat(cInput) || 0;
             const v = parseFloat(vInput) || 0;
+            const r = parseFloat(rInput) || 0;
             const resEl = document.getElementById('dc_result');
 
-            if (c > 0 && v > 0) {
+            if (c > 0 && v > 0 && r > 0) {
                 // 1. エネルギー計算 E = 0.5 * C * V^2 [J]
                 // 単位：μF(10^-6) * (kV)^2 (10^6) なので、そのまま掛けて [J] になります。
                 const energyJ = 0.5 * c * Math.pow(v, 2);
                 const energyKWs = energyJ / 1000;
 
+                //電流計算 mAに合わせる
+                const i = (v * 1000) / (r * 1000000) * 1000;
+
+                //CR時定数
+                const cr = r * 1000000 * c * 0.001 * 0.001;
+                
                 // 2. 50℃上昇に抑えるための必要水量 [L]
                 // Q = mcΔT より m = Q / (c_water * ΔT)
                 const requiredWater = energyJ / (4184 * 50);
 
+                // Gas constants (mL/s per Ampere at approx. 25°C)
+    　　　　　　// Adjusted from standard 0.116 (0°C) to 0.126 (25°C) for practical use
+    　　　　　　const H2_FACTOR = 0.126; 
+    　　　　　　const O2_FACTOR = 0.063;
+　　　　　　　　
+                //瞬時ピーク水素量、同酸素量
+                const peakh2 = i * H2_FACTOR * 1; // mL/sec
+                const peako2 = i * O2_FACTOR * 1; // mL/sec
+
+                //総量　水素　酸素
+                const totalh2 = peakh2 * cr;
+　　　　　　　　const totalo2 = peako2 * cr;
+           
                 // 3. 結果のHTML生成（指定の色・フォントサイズを反映）
                 resEl.innerHTML = `
-                    <div style="font-size: 1.2em; color: green;">Energy: ${energyKWs.toFixed(3)} kWs</div>
-                    <div style="color: #008000; font-size: 1.2em; font-weight: bold; margin-top: 10px;">
+                    <div style="font-size: 1.0em; color:green;">Energy: ${energyKWs.toFixed(3)} kWs</div>
+                    <div style="font-size: 1.0em; color:green;">Current: ${i.toFixed(1)} mA</div>
+                    <div style="font-size: 1.0em; color:green;">RC time constant: ${cr.toFixed(1)} Sec</div>
+                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
                          Min Water for &Delta;T < 50℃: ${requiredWater.toFixed(3)} L
                     </div>
-                    <div style="color: #008000; font-size: 1.2em; font-weight: bold; margin-top: 10px;">
+                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
                          Min Water for &Delta;T < 25℃: ${requiredWater.toFixed(3)*2} L
                     </div>
-                    <div style="color: #008000; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+    Peak Flow (H2 : O2) : ${peakh2.toFixed(3)} ml/sec : ${peako2.toFixed(3)} mL/sec
+</div>
+<div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+    Total Volume (H2 : O2) : ${totalh2.toFixed(1)} ml : ${totalo2.toFixed(1)} mL
+</div>
+                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
                          However, the water resistors require a distance to withstand voltage.
                     </div>
                     
@@ -129,6 +153,7 @@
         function sendContactEmailDC() {
             const c = document.getElementById('dc_c').value || "未入力";
             const v = document.getElementById('dc_v').value || "未入力";
+            const r = document.getElementById('dc_r').value || "未入力";
             // 改行などを含むテキストを取得
             const result = document.getElementById('dc_result').innerText;
 
@@ -139,7 +164,8 @@
     　　　    `Request for Detailed Consultation on DC Test / DC試験の詳細検討をお願いします。\n\n` +
      　　　   `[Input Conditions / 入力条件]\n` +
      　　　   `- Capacitance / 静電容量: ${c} μF\n` +
-     　　　   `- Test Voltage / 試験電圧: ${v} kV\n\n` +
+     　　　   `- Test Voltage / 試験電圧: ${v} kV\n` +
+              `- Discharger Resistance / 放電抵抗: ${r} MΩ\n\n` +
      　　　   `[Calculation Results / 計算結果]\n` +
        　　　 `${result}\n\n` +
       　　　  `Please confirm the above details. / ご確認をお願いいたします。\n`+
