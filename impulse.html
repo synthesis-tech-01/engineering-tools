@@ -45,8 +45,17 @@
                      <img src="Discharge.png" style="width: 100%; height: auto; display: block;" alt="Discharge">
                 </div>
              </div>    
-          
+
+              <div style="flex: 1;">
+    　　　　　　<label class="label-ja">Waveform Type / 波形種別</label>
+    　　　　　　<select id="wave-type" onchange="calculateImpulse()" style="width: 100%; padding: 5px;">
+        　　　　　<option value="LI">LI (1.2/50 μs)</option>
+        　　　　　<option value="SI">SI (250/2500 μs)</option>
+    　　　　　　</select>
+　　　　　　　</div>
+              
             <div style="background: linear-gradient(145deg, #ffffff, #fff4e5); padding: 5px; margin-top: 10px;border-radius: 5px; border: 2px solid #ffcc80; margin-bottom: 5px; display: flex; gap: 5px;">
+                
                 <div style="flex: 1;">
                     <label class="label-ja">Test Object Capacitance/試料静電容量 [nF]</label>
                     <input type="number" id="total_cap_nf" placeholder="nF" oninput="calculateImpulse()">
@@ -165,7 +174,8 @@
             const tR2 = parseFloat(document.getElementById('term_r2').value) || 0;
             const dC1 = parseFloat(document.getElementById('def_c1').value) || 0;
             const dC2 = parseFloat(document.getElementById('def_c2').value) || 0;
-
+　　　　　　const waveType = document.getElementById('wave-type').value;
+            
             let sR1 = 0, sR2 = 0;
             for (let i = 1; i <= numStages; i++) {
                 sR1 += parseFloat(document.getElementById(`r1_${i}`).value) || 0;
@@ -221,13 +231,20 @@
             
             const t1 = 2.7 * totalCapUf * sR1;
             let t1_status = { label: "NG", color: "#ff4d4d" };
-            if (t1 >= 0.84 && t1 <= 5.0) {
+            if (waveType == "LI" && t1 >= 0.84 && t1 <= 5.0) {
                 t1_status = { label: "OK", color: "#008000" };
             }
-
+            
+            if (waveType == "SI" && t1 >= 200 && t1 <= 300) {
+                t1_status = { label: "OK", color: "#008000" };
+            }
+            
             const t2 = combAllR * 0.8 * (seriesC1 || 1);
             let t2_status = { label: "NG", color: "#ff4d4d" };
-            if (t2 >= 40 && t2 <= 60){
+            if (waveType == "LI" && t2 >= 40 && t2 <= 60){
+                t2_status = { label: "OK", color: "#008000" };
+            }
+            if (waveType == "SI" && t2 >= 1000 && t2 <= 4000){
                 t2_status = { label: "OK", color: "#008000" };
             }
 
@@ -252,20 +269,23 @@
             }
 
             res.innerHTML = `
-                <div style="font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; color: #008000;">
+                <div style="font-family: 'Helvetica Neue', Arial, 'Hiragino Kaku Gothic ProN', 'Hiragino Sans', Meiryo, sans-serif; color: #0f0;">
                     <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>Estimated Efficiency η [%]:<b style="color:#008000; font-size:1.1rem;">${(n_dec*100).toFixed(1)}</b></span>
+                        <span>Impulse Wave Type :<b style="color:#0f0; font-size:1.1rem;">${waveType}</b></span>
+                    </div>    
+                    <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+                        <span>Estimated Efficiency η [%]:<b style="color:#0f0; font-size:1.1rem;">${(n_dec*100).toFixed(1)}</b></span>
                     </div>
                     <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>T1 (2.7 x total R1[Ω] x Test object C[uf]):<b style="color:#008000; font-size:1.1rem;">${t1.toFixed(2)} μs</b></span>
+                        <span>T1 (2.7 x total R1[Ω] x Test object C[uf]):<b style="color:#0f0; font-size:1.1rem;">${t1.toFixed(2)} μs</b></span>
                         <span style="font-size:0.8rem; background:${testV > 0 ? t1_status.color : '#666'}; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;">${testV > 0 ? t1_status.label : '---'}</span>
                     </div>
                     <div style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-                        <span>T2　(0.8 x (total R1 + total R2[Ω]) x serise(IG inner C + Test object C[uf]):<b style="color:#008000; font-size:1.1rem;">${t2.toFixed(1)} μs</b></span>
+                        <span>T2 (0.8 x (total R1 + total R2[Ω]) x serise(IG inner C + Test object C[uf]):<b style="color:#0f0; font-size:1.1rem;">${t2.toFixed(1)} μs</b></span>
                         <span style="font-size:0.8rem; background:${testV > 0 ? t2_status.color : '#666'}; color:#fff; padding:2px 6px; border-radius:4px; font-weight:bold;">${testV > 0 ? t2_status.label : '---'}</span>
                     </div>
                     <p style="margin-bottom:8px; font-size:1.1rem;">
-                        Status: ${testV > 0 ? (anyWarn ? '<span style="color:#ff4d4d;">Attention Required</span>' : '<span style="color:#008000;">Within the Rated Value</span>') : '<span style="color:#666;">Waiting for Input</span>'}
+                        Status: ${testV > 0 ? (anyWarn ? '<span style="color:#ff4d4d;">Attention Required</span>' : '<span style="color:#0f0;">Within the Rated Value</span>') : '<span style="color:#666;">Waiting for Input</span>'}
                     </p>
                     ${warningMessage}
                 </div>`;

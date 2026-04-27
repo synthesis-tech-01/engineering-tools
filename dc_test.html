@@ -1,6 +1,14 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
+        <!-- Google tag (gtag.js) -->
+    <script async src="https://googletagmanager.com/gtag/js?id=G-E4B6H1NV9J"></script>
+    <script>
+      window.dataLayer = window.dataLayer || [];
+      function gtag(){dataLayer.push(arguments);}
+      gtag('js', new Date());
+      gtag('config', 'G-E4B6H1NV9J');
+    </script>
     <meta charset="UTF-8">
     <title>DC Test</title>
     <link rel="stylesheet" href="style.css">
@@ -121,22 +129,22 @@
            
                 // 3. 結果のHTML生成（指定の色・フォントサイズを反映）
                 resEl.innerHTML = `
-                    <div style="font-size: 1.0em; color:green;">Energy: ${energyKWs.toFixed(3)} kWs</div>
-                    <div style="font-size: 1.0em; color:green;">Current: ${i.toFixed(1)} mA</div>
-                    <div style="font-size: 1.0em; color:green;">RC time constant: ${cr.toFixed(1)} Sec</div>
-                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+                    <div style="font-size: 1.0em; color:#0f0;">Energy: ${energyKWs.toFixed(3)} kWs</div>
+                    <div style="font-size: 1.0em; color:#0f0;">Current: ${i.toFixed(1)} mA</div>
+                    <div style="font-size: 1.0em; color:#0f0;">RC time constant: ${cr.toFixed(1)} Sec</div>
+                    <div style="color:#0f0; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
                          Min Water for &Delta;T < 50℃: ${requiredWater.toFixed(3)} L
                     </div>
-                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+                    <div style="color:#0f0; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
                          Min Water for &Delta;T < 25℃: ${requiredWater.toFixed(3)*2} L
                     </div>
-                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+                    <div style="color:#0f0; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
     Peak Flow (H2 : O2) : ${peakh2.toFixed(3)} ml/sec : ${peako2.toFixed(3)} mL/sec
 </div>
-<div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+<div style="color:#0f0; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
     Total Volume (H2 : O2) : ${totalh2.toFixed(1)} ml : ${totalo2.toFixed(1)} mL
 </div>
-                    <div style="color:green; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
+                    <div style="color:#0f0; font-size: 1.0em; font-weight: bold; margin-top: 10px;">
                          However, the water resistors require a distance to withstand voltage.
                     </div>
                     
