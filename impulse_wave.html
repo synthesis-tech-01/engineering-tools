@@ -65,13 +65,13 @@
     
     <div id="ui-area" style="display:none;">
         <label class="file-label">
-            select file/ファイルを選択 (CSV / TXT)
+            Select file/ファイルを選択 (CSV / TXT)
             <input type="file" id="file-upload" accept=".csv,.txt" style="display:none;">
         </label>
         <span id="file-info"></span>
     </div>
 
-    <h3>Waveform Analysis [kV]</h3>
+    <h3>Waveform Analysis</h3>
     <div id="plot-main"></div>
 
     <h3>FFT Analysis [Residual Data]</h3>
@@ -96,7 +96,6 @@ from scipy.fft import fft, fftfreq
 from pyscript import window, document, when
 import io
 import json
-import js
 
 status_el = document.getElementById("status")
 file_info_el = document.getElementById("file-info")
@@ -106,8 +105,9 @@ def update_status(text, animated=False):
     if animated: status_el.classList.add("dot-ani")
     else: status_el.classList.remove("dot-ani")
 
-def v_model(t_us, Vm, a, b):
-    return Vm * (np.exp(-np.clip(b * t_us, 0, 700)) - np.exp(-np.clip(a * t_us, 0, 700)))
+def v_model(t_us, vpeak, b, shift, a):
+    t = np.where(t_us <= 1e-4, 1e-4, t_us)
+    return vpeak * np.exp(-b / t) - shift * np.exp(-a / t)
 
 def to_js(obj):
     return window.JSON.parse(json.dumps(obj))
@@ -123,179 +123,92 @@ async def handle_file(event):
     file_info_el.innerText = f"選択ファイル: {f.name}"
     update_status("Analyzing...", animated=True)
     
+    popt = [0.0, 0.0, 0.0, 0.0]
+    
     try:
         buf = await f.arrayBuffer()
-        raw_bytes = buf.to_bytes()
-        df = pd.read_csv(io.BytesIO(raw_bytes), sep=r'\s+|,', engine='python')
-        
+        df = pd.read_csv(io.BytesIO(buf.to_bytes()), sep=r'\s+|,', engine='python')
         df_clean = df.iloc[:, [0, 1]].apply(pd.to_numeric, errors='coerce').dropna().astype(np.float64)
         
         t_seconds = df_clean.iloc[:, 0].values
         v_raw_v = df_clean.iloc[:, 1].values
         n = len(t_seconds)
-
-        dt_sec = t_seconds[1] - t_seconds[0]
-        if dt_sec <= 0:
-            dt_sec = (t_seconds[-1] - t_seconds[0]) / (n - 1)
-        if dt_sec <= 0: dt_sec = 1e-9
-
+        dt_sec = (t_seconds[-1] - t_seconds[0]) / (n - 1) if n > 1 else 1e-9
         t_us = t_seconds * 1e6
-        window.console.log("FIXED Sampling Rate (Hz):", 1.0 / dt_sec)
 
-        # 1. Fitting
-        vm_init = v_raw_v[np.argmax(np.abs(v_raw_v))] * 1.1
-        popt, _ = curve_fit(v_model, t_us, v_raw_v, p0=[vm_init, 70.0, 0.4])
-        v_fit_v = v_model(t_us, *popt)
-        residual_v = v_raw_v - v_fit_v
+        # --- 1. Fitting ---
+        v_abs_data = np.abs(v_raw_v)
+        v_max_abs = np.max(v_abs_data)
+        t_max_idx = np.argmax(v_abs_data)
+        actual_polarity = 1.0 if v_raw_v[t_max_idx] >= 0 else -1.0
 
-        # 2. FFT & K-factor & IFFT
+        p0 = [v_max_abs * 2.0, 5.0, v_max_abs * 1.8, 0.5]
+        try:
+            popt, _ = curve_fit(v_model, t_us, v_abs_data, p0=p0, maxfev=10000)
+            v_fit_v = v_model(t_us, *popt) * actual_polarity
+            residual_v = v_raw_v - v_fit_v
+        except:
+            v_fit_v = np.zeros_like(v_raw_v)
+            residual_v = v_raw_v
+
+        # --- 2. FFT & Filter (IEC規格 1e+6) ---
         detrended_res = residual_v - np.mean(residual_v)
         yf = fft(detrended_res)
         xf = fftfreq(n, dt_sec)
-        
         f_mhz = xf / 1e6
         k_factor = 1.0 / (1.0 + 2.2 * f_mhz**2)
-        
         yf_filtered = yf * k_factor
-        residual_filtered = np.fft.ifft(yf_filtered).real
-        
-        # 波形再合成
-        v_filtered_total = v_fit_v + residual_filtered
+        v_filtered_total = v_fit_v + np.fft.ifft(yf_filtered).real
 
-# --- 3. T1, T2 計測ロジック ---
-        abs_v_filtered = np.abs(v_filtered_total)
-        t_max_idx = np.argmax(abs_v_filtered)
-        v_peak = v_filtered_total[t_max_idx]
-        v_peak_abs = abs_v_filtered[t_max_idx]
-        
-        v30_abs, v90_abs, v50_abs = v_peak_abs * 0.3, v_peak_abs * 0.9, v_peak_abs * 0.5
-
-        def get_time_at(target_v_abs, start_idx, end_idx):
-            times = t_us[start_idx:end_idx]
-            volts_abs = abs_v_filtered[start_idx:end_idx]
-            if len(volts_abs) < 2: return 0
-            if start_idx >= t_max_idx: # ピーク後の減衰区間用
-                return np.interp(target_v_abs, volts_abs[::-1], times[::-1])
-            return np.interp(target_v_abs, volts_abs, times)
-
-        # すべての時間軸情報を x 変数に格納
-        x30 = get_time_at(v30_abs, 0, t_max_idx)
-        x90 = get_time_at(v90_abs, 0, t_max_idx)
-        x50 = get_time_at(v50_abs, t_max_idx, len(t_us))
-        
+        # --- 3. T1, T2 計測 ---
+        abs_v_filt = np.abs(v_filtered_total)
+        pk_idx = np.argmax(abs_v_filt)
+        v_pk = v_filtered_total[pk_idx]
+        x30 = np.interp(abs_v_filt[pk_idx]*0.3, abs_v_filt[:pk_idx], t_us[:pk_idx])
+        x90 = np.interp(abs_v_filt[pk_idx]*0.9, abs_v_filt[:pk_idx], t_us[:pk_idx])
+        x50 = np.interp(abs_v_filt[pk_idx]*0.5, abs_v_filt[pk_idx:][::-1], t_us[pk_idx:][::-1])
         t1 = (x90 - x30) / 0.6
         t0 = x30 - 0.3 * t1
         t2 = x50 - t0
 
-        # --- 4. メインプロット作成 ---
+        # --- 4. メインプロット描画 (余白削減・エリア拡大) ---
         main_traces = [
             {"x": safe_list(t_us), "y": safe_list(v_raw_v/1000), "name": "Raw", "line": {"color": "#3498db", "width": 1}},
-            {"x": safe_list(t_us), "y": safe_list(v_filtered_total/1000), "name": "Filtered (K-factor)", "line": {"color": "#e67e22", "width": 2}},
-            {"x": safe_list(t_us), "y": safe_list(residual_filtered/1000), "name": "Residual (Filtered)", "line": {"color": "#27ae60", "width": 1}},
-            {
-                "x": [t0, x30, x90, x50], 
-                "y": [0, v_peak*0.3/1000, v_peak*0.9/1000, v_peak*0.5/1000], 
-                "name": "Points", "mode": "markers", "marker": {"color": "red", "size": 8}
-            }
+            {"x": safe_list(t_us), "y": safe_list(v_filtered_total/1000), "name": "Filtered", "line": {"color": "#e67e22", "width": 3}},
+            {"x": safe_list(t_us), "y": safe_list(residual_v/2000), "name": "Residual", "line": {"color": "black", "width": 1}},
+            {"x": [t0, x30, x90, x50], "y": [0, v_pk*0.3/1000, v_pk*0.9/1000, v_pk*0.5/1000], "mode": "markers", "marker": {"color": "red", "size": 8}, "name": "Points"}
         ]
 
         shapes = [
-            # 等価正面直線
-            {"type": "line", "x0": t0, "y0": 0, "x1": t0 + t1, "y1": v_peak/1000, "line": {"color": "red", "dash": "dashdot", "width": 1}},
-            # T2 水平補助線 (x50点から仮想原点t0まで)
-            {"type": "line", "x0": x50, "y0": (v_peak*0.5)/1000, "x1": t0, "y1": (v_peak*0.5)/1000, "line": {"color": "gray", "dash": "dash"}},
-            # 【修正】T2 垂直補助線 (x50点から真上の0Vまで)
-            {"type": "line", "x0": x50, "y0": (v_peak*0.5)/1000, "x1": x50, "y1": 0, "line": {"color": "gray", "dash": "dot"}}
+            {"type": "line", "x0": t0, "y0": 0, "x1": t0 + t1, "y1": v_pk/1000, "line": {"color": "red", "dash": "dashdot", "width": 1}},
+            {"type": "line", "x0": x50, "y0": (v_pk*0.5)/1000, "x1": t0, "y1": (v_pk*0.5)/1000, "line": {"color": "gray", "dash": "dash", "width": 1}},
+            {"type": "line", "x0": x50, "y0": (v_pk*0.5)/1000, "x1": x50, "y1": 0, "line": {"color": "gray", "dash": "dot", "width": 1}}
         ]
 
-        # main_layout を定義
         main_layout = {
             "template": "plotly_white",
-            "margin": {"t": 30, "r": 20, "b": 50, "l": 60},
-            "xaxis": {"title": "Time [us]", "automargin": True},
+            "height": 600,
+            "margin": {"l": 50, "r": 20, "t": 40, "b": 50},
+            "xaxis": {"title": "Time [us]", "range": [-10, 100], "autorange": False},
             "yaxis": {"title": "Voltage [kV]", "automargin": True},
+            "shapes": shapes,
             "showlegend": True,
-            "legend": {"x": 0.99, "y": 0.99, "xanchor": "right", "yanchor": "top"},
-            "shapes": shapes
+            "legend": {"x": 1, "xanchor": "right", "y": 1}
         }
 
-        # プロット実行
-        window.Plotly.newPlot("plot-main", to_js(main_traces), to_js(main_layout), to_js({"responsive": True}))# --- 3. T1, T2 計測ロジック ---
-        abs_v_filtered = np.abs(v_filtered_total)
-        t_max_idx = np.argmax(abs_v_filtered)
-        v_peak = v_filtered_total[t_max_idx]
-        v_peak_abs = abs_v_filtered[t_max_idx]
+        window.Plotly.newPlot("plot-main", to_js(main_traces), to_js(main_layout))
         
-        v30_abs, v90_abs, v50_abs = v_peak_abs * 0.3, v_peak_abs * 0.9, v_peak_abs * 0.5
-
-        def get_time_at(target_v_abs, start_idx, end_idx):
-            times = t_us[start_idx:end_idx]
-            volts_abs = abs_v_filtered[start_idx:end_idx]
-            if len(volts_abs) < 2: return 0
-            if start_idx >= t_max_idx: # ピーク後の減衰区間用
-                return np.interp(target_v_abs, volts_abs[::-1], times[::-1])
-            return np.interp(target_v_abs, volts_abs, times)
-
-        # すべての時間軸情報を x 変数に格納
-        x30 = get_time_at(v30_abs, 0, t_max_idx)
-        x90 = get_time_at(v90_abs, 0, t_max_idx)
-        x50 = get_time_at(v50_abs, t_max_idx, len(t_us))
-        
-        t1 = (x90 - x30) / 0.6
-        t0 = x30 - 0.3 * t1
-        t2 = x50 - t0
-
-        # --- 4. メインプロット作成 ---
-        main_traces = [
-            {"x": safe_list(t_us), "y": safe_list(v_raw_v/1000), "name": "Raw", "line": {"color": "#3498db", "width": 1}},
-            {"x": safe_list(t_us), "y": safe_list(v_filtered_total/1000), "name": "Filtered (K-factor)", "line": {"color": "#e67e22", "width": 2}},
-            {"x": safe_list(t_us), "y": safe_list(residual_filtered/1000), "name": "Residual (Filtered)", "line": {"color": "#27ae60", "width": 1}},
-            {
-                "x": [t0, x30, x90, x50], 
-                "y": [0, v_peak*0.3/1000, v_peak*0.9/1000, v_peak*0.5/1000], 
-                "name": "Points", "mode": "markers", "marker": {"color": "red", "size": 8}
-            }
-        ]
-
-        shapes = [
-            # 等価正面直線
-            {"type": "line", "x0": t0, "y0": 0, "x1": t0 + t1, "y1": v_peak/1000, "line": {"color": "red", "dash": "dashdot", "width": 1}},
-            # T2 水平補助線 (x50点から仮想原点t0まで)
-            {"type": "line", "x0": x50, "y0": (v_peak*0.5)/1000, "x1": t0, "y1": (v_peak*0.5)/1000, "line": {"color": "gray", "dash": "dash"}},
-            # 【修正】T2 垂直補助線 (x50点から真上の0Vまで)
-            {"type": "line", "x0": x50, "y0": (v_peak*0.5)/1000, "x1": x50, "y1": 0, "line": {"color": "gray", "dash": "dot"}}
-        ]
-
-        # main_layout を定義
-        main_layout = {
-            "template": "plotly_white",
-            "margin": {"t": 30, "r": 20, "b": 50, "l": 60},
-            "xaxis": {"title": "Time [us]", "automargin": True},
-            "yaxis": {"title": "Voltage [kV]", "automargin": True},
-            "showlegend": True,
-            "legend": {"x": 0.99, "y": 0.99, "xanchor": "right", "yanchor": "top"},
-            "shapes": shapes
-        }
-
-        # プロット実行
-        window.Plotly.newPlot("plot-main", to_js(main_traces), to_js(main_layout), to_js({"responsive": True}))
-        
-        # --- 5. FFTプロット ---
+        # --- 5. FFT描画連携 ---
         mask = xf > 0
-        py_freq = [float(x) / 1e6 for x in xf[mask]]
-        py_raw_amp = [float(a) for a in (np.abs(yf[mask]) * 2.0 / n)]
-        py_filtered_amp = [float(a) for a in (np.abs(yf_filtered[mask]) * 2.0 / n)]
-        window.plotFFTInJS(to_js(py_freq), to_js(py_raw_amp), to_js(py_filtered_amp), 10.0)
+        window.plotFFTInJS(to_js((xf[mask]/1e6).tolist()), to_js((np.abs(yf[mask])*2/n).tolist()), to_js((np.abs(yf_filtered[mask])*2/n).tolist()), 10.0)
         
-        window.plotFFTInJS(
-            to_js(py_freq), 
-            to_js(py_raw_amp), 
-            to_js(py_filtered_amp), 
-            10.0
+        # --- 6. ステータス更新 ---
+        fs_mhz = (1.0 / dt_sec) / 1e6
+        status_text = (
+            f"Completed: Voltage={v_pk/1000:.2f}kV  T1={t1:.2f}us  T2={t2:.2f}us\n"
+            f"Sampling Rate: {fs_mhz:.1f}MHz | Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}, "
         )
-    
-        # --- 6. ステータス更新 (v_peakを使用して極性を反映) ---
-        update_status(f"Completed: Measured Voltage={v_peak/1000:.2f}kV  T1={t1:.2f}us  T2={t2:.2f}us")
+        update_status(status_text)
         
     except Exception as e:
         update_status(f"Error: {str(e)}")
@@ -317,7 +230,7 @@ function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
         name: 'Raw',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#27ae60', width: 1 }
+        line: { color: '#3498db', width: 1 }
     };
 
     // 2. Filteredデータのトレース定義 (青)
@@ -327,7 +240,7 @@ function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
         name: 'Filtered',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#3498db', width: 2 }
+        line: { color: '#2ecc71', width: 3 }
     };
 
     // 3. レイアウト設定（横幅最大化 & 凡例内包）
