@@ -244,9 +244,9 @@ async def handle_file(event):
         # --- 7. Plotly表示 (Residual含む) ---
         main_traces = [
             {"x": safe_list(t_us), "y": safe_list(v_raw_v/1000), "name": "Raw", "line": {"color": "#3498db", "width": 1}},
-            {"x": safe_list(t_us), "y": safe_list(v_filtered_total/1000), "name": "Filtered", "line": {"color": "#e67e22", "width": 3}},
-            {"x": safe_list(t_us), "y": safe_list(residual_v/3000), "name": "Residual", "line": {"color": "gray", "width": 1}},
-            {"x": [res_t0, t_30_us, (idx_90-idx_start)*dt_us, t_50_us], "y": [0, (v_pk*0.3)/1000, (v_pk*0.9)/1000, (v_pk*0.5)/1000], "mode": "markers", "marker": {"color": "red", "size": 8}, "name": "Points"}
+            {"x": safe_list(t_us), "y": safe_list(v_filtered_total/1000), "name": "Filtered", "line": {"color": "#2ecc71", "width": 3}},
+            {"x": safe_list(t_us), "y": safe_list(residual_v/10000), "name": "Residual", "line": {"color": "gray", "width": 1}},
+            {"x": [res_t0, t_30_us, (idx_90-idx_start)*dt_us, t_50_us, res_t0 + res_t1, t_50_us], "y": [0, (v_pk*0.3)/1000, (v_pk*0.9)/1000, (v_pk*0.5)/1000, 0, 0], "mode": "markers", "marker": {"color": "red", "size": 8}, "name": "Points"}
         ]
         
         main_layout = {
@@ -255,7 +255,9 @@ async def handle_file(event):
             "yaxis": {"title": "Voltage [kV]", "automargin": True,"zeroline": False},
             "shapes": [
                 {"type": "line", "x0": res_t0, "y0": 0, "x1": res_t0 + res_t1, "y1": v_pk/1000, "line": {"color": "red", "dash": "dashdot", "width": 1}},
-                {"type": "line", "x0": t_50_us, "y0": (v_pk*0.5)/1000, "x1": res_t0, "y1": (v_pk*0.5)/1000, "line": {"color": "gray", "dash": "dash", "width": 1}}
+    {"type": "line", "x0": res_t0 + res_t1, "y0": v_pk/1000, "x1": res_t0 + res_t1, "y1": 0, "line": {"color": "red", "dash": "dashdot", "width": 1}},
+                {"type": "line", "x0": t_50_us, "y0": (v_pk*0.5)/1000, "x1": res_t0, "y1": (v_pk*0.5)/1000, "line": {"color": "gray", "dash": "dash", "width": 1}},
+                {"type": "line", "x0": t_50_us, "y0": (v_pk*0.5)/1000, "x1": t_50_us, "y1": 0, "line": {"color": "gray", "dash": "dash", "width": 1}}
             ],
             "showlegend": True
         }
