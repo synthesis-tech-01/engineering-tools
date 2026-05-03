@@ -148,7 +148,7 @@ input:focus {
 /* 結果表示 */
 .result-box { 
     background: #1a1a1a; 
-    color: #0f0; 
+    color: #00ff00; 
     padding: 15px; 
     border-radius: 8px; 
     font-family: monospace; 
@@ -182,4 +182,24 @@ input:focus {
     padding: 15px;
     /* 既存のスタイル... */
 }
+  /* 外枠：背景を黒にし、パディングを調整 */
+  #status-box {
+    background-color: black !important;
+    padding: 15px !important;
+    border: none !important;
+    border-radius: 4px;
+    margin-bottom: 10px;
+  }
 
+  /* 文字：常に14px、明るい緑、左寄せ */
+  #status {
+    display: block;
+    background-color: black !important;
+    color: #00ff00 !important;
+    font-size: 18px !important; /* どんな時も14px固定 */
+    font-weight: normal !important;
+    font-family: monospace;
+    text-align: left !important;
+    border: none !important;
+    box-shadow: none !important;
+  }
