@@ -28,55 +28,34 @@
         h3 { color: #2c3e50; border-left: 5px solid #3498db; padding-left: 10px; margin-top: 25px; }
     </style>
 </head>
+    
 <body>
 <div class="container">
     <a href="index.html" class="btn btn-back">← Back to TOP</a>
     <div id="pdf-area">
-    <h2 style="color: blue;">IMPULSE WAVE ANALYZE/インパルス波形解析</h2>
-<style>
-  /* 外枠：背景を黒にし、パディングを調整 */
-  #status-box {
-    background-color: black !important;
-    padding: 15px !important;
-    border: none !important;
-    border-radius: 4px;
-    margin-bottom: 10px;
-  }
-
-  /* 文字：常に14px、明るい緑、左寄せ */
-  #status {
-    display: block;
-    background-color: black !important;
-    color: #00ff00 !important;
-    font-size: 18px !important; /* どんな時も14px固定 */
-    font-weight: normal !important;
-    font-family: monospace;
-    text-align: left !important;
-    border: none !important;
-    box-shadow: none !important;
-  }
-</style>
-
-<div id="status-box">
-  <span id="status" class="dot-ani">
-    System Loading (WASM Engine Initialization)/システム起動中（WASMエンジン初期化）about a minute
-  </span>
-</div>
+        <h2 style="color: blue;">IMPULSE WAVE ANALYZE/インパルス波形解析</h2>
+        
+        <div id="status-box">
+          <span id="status" class="dot-ani">
+            System Loading (WASM Engine Initialization) / システム起動中
+            <span id="init-timer">0.0</span>s  
+          </span>
+        </div>  
+        
+        <div id="ui-area" style="display:none;">
+            <label class="file-label">
+                Select File/ファイルを選択 (CSV / TXT)
+                <input type="file" id="file-upload" accept=".csv,.txt" style="display:none;">
+            </label>
+            <span id="file-info"></span>
+        </div>
     
-    <div id="ui-area" style="display:none;">
-        <label class="file-label">
-            Select file/ファイルを選択 (CSV / TXT)
-            <input type="file" id="file-upload" accept=".csv,.txt" style="display:none;">
-        </label>
-        <span id="file-info"></span>
+        <h3>Waveform Analysis</h3>
+        <div id="plot-main"></div> 
+    
+        <h3>FFT Analysis [Residual Data]</h3>
+        <div id="plot-fft"></div>
     </div>
-
-    <h3>Waveform Analysis</h3>
-    <div id="plot-main"></div>
-
-    <h3>FFT Analysis [Residual Data]</h3>
-    <div id="plot-fft"></div>
-</div>
 
     <button class="btn btn-pdf btn-wide-action" onclick="window.print();">PDF Report Export</button>
     <button class="btn btn-main btn-wide-action" style="margin-top: 10px; background: #28a745;" onclick="sendContactEmailIMPULSE()">
@@ -89,10 +68,12 @@
 </py-config>
 
 <script type="py">
-import pandas as pd
+#import pandas as pd
+#from scipy.fft import fft, fftfreq
+    
 import numpy as np
 from scipy.optimize import curve_fit
-from scipy.fft import fft, fftfreq
+from numpy.fft import fft, fftfreq, ifft
 from pyscript import window, document, when
 import io
 import json
@@ -126,17 +107,41 @@ async def handle_file(event):
     popt = [0.0, 0.0, 0.0, 0.0]
     
     try:
-        buf = await f.arrayBuffer()
-        df = pd.read_csv(io.BytesIO(buf.to_bytes()), sep=r'\s+|,', engine='python')
-        df_clean = df.iloc[:, [0, 1]].apply(pd.to_numeric, errors='coerce').dropna().astype(np.float64)
+        # 1. ファイルを読み込む (ここが重要！)
+        array_buffer = await f.arrayBuffer()
+        # 2. bytesオブジェクトに変換し、テキストとしてデコード
+        raw_bytes = array_buffer.to_bytes()
+        text_data = raw_bytes.decode('utf-8', errors='ignore')
         
-        t_seconds = df_clean.iloc[:, 0].values
-        v_raw_v = df_clean.iloc[:, 1].values
+        lines = text_data.strip().split('\n')
+        
+        numeric_data = []
+        for line in lines:
+            # カンマやタブを空白に置換して分割
+            parts = line.replace(',', ' ').split()
+            if len(parts) >= 2:
+                try:
+                    # 最初の2つが数値ならデータとして採用
+                    val1 = float(parts[0])
+                    val2 = float(parts[1])
+                    numeric_data.append([val1, val2])
+                except ValueError:
+                    continue # ヘッダーなどは無視
+        
+        if not numeric_data:
+            raise ValueError("有効な数値データが見つかりませんでした。")
+
+        # NumPy配列化
+        data = np.array(numeric_data, dtype=np.float64)
+        t_seconds = data[:, 0]
+        v_raw_v = data[:, 1]
+        
+        # --- 以降、計算処理 ---
         n = len(t_seconds)
         dt_sec = (t_seconds[-1] - t_seconds[0]) / (n - 1) if n > 1 else 1e-9
         t_us = t_seconds * 1e6
 
-        # --- 1. Fitting ---
+        # --- 1. Fitting (curve_fit) ---
         v_abs_data = np.abs(v_raw_v)
         v_max_abs = np.max(v_abs_data)
         t_max_idx = np.argmax(v_abs_data)
@@ -144,6 +149,7 @@ async def handle_file(event):
 
         p0 = [v_max_abs * 2.0, 5.0, v_max_abs * 1.8, 0.5]
         try:
+            # scipyのcurve_fitを使用
             popt, _ = curve_fit(v_model, t_us, v_abs_data, p0=p0, maxfev=10000)
             v_fit_v = v_model(t_us, *popt) * actual_polarity
             residual_v = v_raw_v - v_fit_v
@@ -151,15 +157,17 @@ async def handle_file(event):
             v_fit_v = np.zeros_like(v_raw_v)
             residual_v = v_raw_v
 
-        # --- 2. FFT & Filter (IEC規格 1e+6) ---
+        # --- 2. FFT & Filter ---
         detrended_res = residual_v - np.mean(residual_v)
         yf = fft(detrended_res)
         xf = fftfreq(n, dt_sec)
         f_mhz = xf / 1e6
         k_factor = 1.0 / (1.0 + 2.2 * f_mhz**2)
         yf_filtered = yf * k_factor
-        v_filtered_total = v_fit_v + np.fft.ifft(yf_filtered).real
-
+        
+        # np.fft.ifft ではなく、インポートした ifft を直接使う
+        v_filtered_total = v_fit_v + ifft(yf_filtered).real
+    
         # --- 3. T1, T2 計測 ---
         abs_v_filt = np.abs(v_filtered_total)
         pk_idx = np.argmax(abs_v_filt)
@@ -175,7 +183,7 @@ async def handle_file(event):
         main_traces = [
             {"x": safe_list(t_us), "y": safe_list(v_raw_v/1000), "name": "Raw", "line": {"color": "#3498db", "width": 1}},
             {"x": safe_list(t_us), "y": safe_list(v_filtered_total/1000), "name": "Filtered", "line": {"color": "#e67e22", "width": 3}},
-            {"x": safe_list(t_us), "y": safe_list(residual_v/2000), "name": "Residual", "line": {"color": "black", "width": 1}},
+            {"x": safe_list(t_us), "y": safe_list(residual_v/2000), "name": "Residual", "line": {"color": "gray", "width": 1}},
             {"x": [t0, x30, x90, x50], "y": [0, v_pk*0.3/1000, v_pk*0.9/1000, v_pk*0.5/1000], "mode": "markers", "marker": {"color": "red", "size": 8}, "name": "Points"}
         ]
 
@@ -201,20 +209,38 @@ async def handle_file(event):
         # --- 5. FFT描画連携 ---
         mask = xf > 0
         window.plotFFTInJS(to_js((xf[mask]/1e6).tolist()), to_js((np.abs(yf[mask])*2/n).tolist()), to_js((np.abs(yf_filtered[mask])*2/n).tolist()), 10.0)
-        
+
         # --- 6. ステータス更新 ---
         fs_mhz = (1.0 / dt_sec) / 1e6
         status_text = (
             f"Completed: Voltage={v_pk/1000:.2f}kV  T1={t1:.2f}us  T2={t2:.2f}us\n"
             f"Sampling Rate: {fs_mhz:.1f}MHz | Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}, "
         )
-        update_status(status_text)
         
+        update_status(status_text)
     except Exception as e:
         update_status(f"Error: {str(e)}")
 
+# UI表示
 document.getElementById("ui-area").style.display = "block"
-update_status("READY")
+
+# --- Pythonコードの末尾（これだけでOK） ---
+
+# 1. JSのタイマーを止める
+if hasattr(window, "initTimerInterval"):
+    window.clearInterval(window.initTimerInterval)
+
+# 2. 今見えている画面の「数字」をそのまま変数にコピーする
+# 難しい判定はやめて、今表示されている init-timer の中身を直接取ります
+current_time = document.getElementById("init-timer").innerText
+
+# 3. 黒いバーの中身を「READY (Initial Load: 〇〇s)」に書き換え
+# シンプルに文字列を合体させるだけです
+status_el.innerText = f"READY (Initial Load: {current_time}s)"
+
+# 4. ボタンを表示し、点滅アニメーションを消す
+document.getElementById("ui-area").style.display = "block"
+status_el.classList.remove("dot-ani")
 </script>
 
 
@@ -276,6 +302,24 @@ function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
     Plotly.newPlot('plot-fft', [traceRaw, traceFiltered], layout, config);
 }
 
+// 1. グローバルな変数を用意する（windowに紐付ける）
+    window.initTimerInterval = null;
+
+    (function() {
+        const startTime = performance.now();
+        const timerEl = document.getElementById("init-timer");
+        
+        // 2. 変数にインターバルのIDを代入する
+        // これにより、後から Python側で window.initTimerInterval を参照して停止できます
+        window.initTimerInterval = setInterval(() => {
+            const elapsed = (performance.now() - startTime) / 1000;
+            timerEl.innerText = elapsed.toFixed(1);
+        }, 100);
+    })();
+
+
+
+    
 function sendContactEmailIMPULSE() {
     
     const subject = encodeURIComponent("Inquiry regarding IMPULSE Test Configuration / インパルス試験構成の相談");
