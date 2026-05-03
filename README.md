@@ -14,7 +14,6 @@ This website provides high-precision technical calculation tools for electrical 
 * **Water Termination for power cable Analysis:** Calculations for
 * **Heating cycle for power cable :High-current Analysis:** Calculations for
 * **Impulse Waveform Fitting:** Curve fitting for impulse voltage using the Levenberg-Marquardt algorithm by Python Curve-fit,FFT and iFFT Support file style are CSV,TXT. Support Oscilloscope are Haehely Hias Serise,YOKOGAWA DL Series,IWATSU DS Series,Tektronix (please inquiry coustomize on your windows)
-*Support 
 * *More tools are being added regularly.*
 * ## About the Developer / 開発者について
 I am a professional electrical engineer and software developer with extensive experience in high-voltage testing and power cable analysis. 
