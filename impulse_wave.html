@@ -91,7 +91,7 @@ def update_status(text, animated=False):
 
 def v_model(t_us, vpeak, b, shift, a):
     t = np.where(t_us <= 1e-4, 1e-4, t_us)
-    return vpeak * np.exp(-b / t) - shift * np.exp(-a / t)
+    return vpeak * np.exp(-t / b) - shift * np.exp(-t / a)
 
 def to_js(obj):
     return window.JSON.parse(json.dumps(obj))
