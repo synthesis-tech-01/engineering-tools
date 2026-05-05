@@ -81,6 +81,8 @@ from pyscript import window, document, when
 import io
 import json
 
+print("PYTHON STARTED")
+    
 status_el = document.getElementById("status")
 file_info_el = document.getElementById("file-info")
 
@@ -99,190 +101,469 @@ def to_js(obj):
 def safe_list(arr):
     return np.nan_to_num(arr, nan=0.0).tolist()
 
+#データ取得
+async def parse_waveform_file(f, meta):
+    text = await _read_file_text(f)
+    lines = text.splitlines()
+
+    fmt = _detect_format(lines)
+
+    if fmt == "yokogawa":
+        result = _parse_yokogawa(lines)
+    else:
+        result = _parse_generic(lines, meta)
+
+    return _finalize(result)
+
+    
+async def _read_file_text(f):
+    array_buffer = await f.arrayBuffer()
+    raw_bytes = array_buffer.to_bytes()
+    return raw_bytes.decode('utf-8', errors='ignore')
+
+#yokogawa or それ以外　ファイル形式    
+def _detect_format(lines):
+    s_rate = h_res = h_off = None
+
+    for line in lines[:20]:
+        parts = [p.strip().replace('"', '') for p in line.split(',')]
+        if len(parts) < 2:
+            continue
+
+        key, val = parts[0], parts[1]
+
+        try:
+            if "SampleRate" in key:
+                s_rate = float(val)
+            elif "HResolution" in key:
+                h_res = float(val)
+            elif "HOffset" in key:
+                h_off = float(val)
+        except:
+            pass
+
+    if all(v is not None for v in [s_rate, h_res, h_off]):
+        return "yokogawa"
+
+    return "generic"
+
+    
+def _parse_yokogawa(lines):
+    js_log = window.console.log
+    js_log("Yokogawa DL format recognized.")
+
+    v = []
+
+    for line in lines[17:]:
+        parts = line.split(',')
+        if len(parts) >= 2 and parts[1].strip():
+            try:
+                v.append(float(parts[1].strip()))
+            except:
+                continue
+
+    v = np.array(v)
+
+    s_rate, h_res, h_off = _extract_yoko_meta(lines)
+
+    dt = h_res if (h_res and h_res > 0) else (1.0 / s_rate if s_rate else 0)
+    t = h_off + np.arange(len(v)) * dt if h_off is not None else np.arange(len(v)) * dt
+
+    return {"time": t, "voltage": v, "dt": dt}
+
+def _parse_generic(lines, meta):
+    js_log = window.console.log   # ←追加
+
+    rows = []
+
+    for line in lines:
+        parts = line.replace(',', ' ').replace('\t', ' ').replace('"', ' ').split()
+
+        nums = []
+        for p in parts:
+            try:
+                nums.append(float(p))
+            except:
+                continue
+
+        if nums:
+            rows.append(nums)
+
+    if not rows:
+        raise ValueError("数値データが見つかりません。")
+
+    max_cols = max(len(r) for r in rows)
+
+    if max_cols >= 2:
+        t = np.array([r[0] for r in rows if len(r) >= 2])
+        v = np.array([r[1] for r in rows if len(r) >= 2])
+        dt = (t[-1] - t[0]) / (len(t) - 1) if len(t) > 1 else 0
+    else:
+        v = np.array([r[0] for r in rows])
+        dt = float(meta.get("XINCR", 0.0)) or (
+            4e-8 if len(v) < 50000 else 8.333333e-9
+        )
+        t = np.arange(len(v)) * dt
+
+    return {"time": t, "voltage": v, "dt": dt}
+
+def _extract_yoko_meta(lines):
+    s_rate = h_res = h_off = None
+
+    for line in lines[:20]:
+        parts = [p.strip().replace('"', '') for p in line.split(',')]
+        if len(parts) < 2:
+            continue
+
+        key, val = parts[0], parts[1]
+
+        try:
+            if "SampleRate" in key:
+                s_rate = float(val)
+            elif "HResolution" in key:
+                h_res = float(val)
+            elif "HOffset" in key:
+                h_off = float(val)
+        except:
+            pass
+
+    return s_rate, h_res, h_off    
+
+def _finalize(result):
+    t = result["time"]
+    v = result["voltage"]
+    dt = result["dt"]
+
+    dt_us = dt * 1e6
+    fs_mhz = 1.0 / dt_us if dt_us > 0 else 0
+
+    try:
+        ratio = float(document.getElementById("ratioInput").value or 1.0)
+    except:
+        ratio = 1.0
+
+    return {
+        "time": t,
+        "voltage": v * ratio,
+        "dt": dt,
+        "dt_us": dt_us,
+        "fs_mhz": fs_mhz,
+    }
+
+
+def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
+    t_us, idx_start = _compute_time_axis(v_raw_v, dt_us)
+
+    fit = _fit_waveform(v_raw_v, t_us)
+
+    filt = _apply_fft_filter(
+        v_raw_v,
+        fit["v_fit"],
+        dt_sec
+    )
+
+    metrics = _extract_metrics(
+        filt["v_filtered"],
+        t_us,
+        idx_start,
+        dt_us
+    )
+
+    return {
+        **fit,
+        **filt,
+        **metrics,
+        "t_us": t_us,
+        "fs_mhz": fs_mhz,
+        "v_raw": v_raw_v
+    }
+
+def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
+    abs_v = np.abs(v_raw_v)
+    v_max = np.max(abs_v)
+
+    if v_max == 0:
+        idx_start = 0
+    else:
+        idx_candidates = np.where(abs_v > v_max * threshold)[0]
+        idx_start = idx_candidates[0] if len(idx_candidates) else 0
+
+    t_us = (np.arange(len(v_raw_v)) - idx_start) * dt_us
+
+    return t_us, idx_start
+
+    
+def _fit_waveform(v_raw_v, t_us):
+    abs_v = np.abs(v_raw_v)
+
+    t_max_idx = np.argmax(abs_v)
+    polarity = 1.0 if v_raw_v[t_max_idx] >= 0 else -1.0
+
+    mask = t_us >= 0
+    p0 = [np.max(abs_v)*2.0, 5.0, np.max(abs_v)*1.8, 0.5]
+
+    popt, _ = curve_fit(
+        v_model,
+        t_us[mask],
+        abs_v[mask],
+        p0=p0,
+        maxfev=10000
+    )
+
+    v_fit = np.zeros_like(v_raw_v)
+    v_fit[mask] = v_model(t_us[mask], *popt) * polarity
+
+    residual = v_raw_v - v_fit
+
+    return {
+        "v_fit": v_fit,
+        "residual": residual,
+        "popt": popt
+    }
+
+def _apply_fft_filter(v_raw_v, v_fit, dt_sec):
+    n = len(v_raw_v)
+
+    residual = v_raw_v - v_fit
+    yf = fft(residual - np.mean(residual))
+    xf = fftfreq(n, dt_sec)
+
+    k = 1.0 / (1.0 + 2.2 * (xf/1e6)**2)
+
+    v_filtered = v_fit + ifft(yf * k).real
+
+    return {
+        "v_filtered": v_filtered,
+        "yf": yf,
+        "xf": xf,
+        "k": k
+    }
+
+def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
+    abs_v = np.abs(v_filtered)
+
+    pk_idx = np.argmax(abs_v)
+    v_pk = v_filtered[pk_idx]
+
+    # ★追加（電圧レベル）
+    v_90 = abs_v[pk_idx] * 0.9
+    v_50 = abs_v[pk_idx] * 0.5
+    v_30 = abs_v[pk_idx] * 0.3
+
+    idx_30 = np.interp(v_30, abs_v[:pk_idx], np.arange(pk_idx))
+    idx_90 = np.interp(v_90, abs_v[:pk_idx], np.arange(pk_idx))
+    idx_50 = np.interp(v_50, abs_v[pk_idx:][::-1], np.arange(len(v_filtered)-1, pk_idx-1, -1))
+
+    t_30 = (idx_30 - idx_start) * dt_us
+    t_50 = (idx_50 - idx_start) * dt_us
+    t_90 = (idx_90 - idx_start) * dt_us
+    
+    t1 = ((idx_90 - idx_30) * dt_us) / 0.6
+    t0 = t_30 - 0.3 * t1
+    t2 = t_50 - t0
+
+    return {
+        "v_pk": v_pk,
+        "v_90": v_90,   # ★追加
+        "v_50": v_50,   # ★追加
+        "v_30": v_30,   # ★追加
+        "t1": t1,
+        "t2": t2,
+        "t0": t0,
+        "t_30": t_30,
+        "t_50": t_50,
+        "t_90": t_90,
+        "idx_90": idx_90,
+        "idx_start": idx_start
+    }
+
+def render_results(result):
+    window.console.log(result.keys())
+
+    t_us = result["t_us"]
+
+    # --- 波形 ---
+    main_traces = [
+        {"x": safe_list(t_us), "y": safe_list(result["v_raw"]/1000),
+         "name": "Raw",
+         "line": {"color": "gray", "width": 1}
+        },
+        {"x": safe_list(t_us), "y": safe_list(result["residual"]/10000),
+         "name": "Residual",
+         "line": {"color": "#dcdcdc", "width": 1}
+        },
+         #{"x": safe_list(t_us), "y": safe_list(result["v_fit"]/1000),
+         #"name": "Fit",
+         #"line": {"color": "#5dade2", "width": 1}
+         #},
+        {"x": safe_list(t_us), "y": safe_list(result["v_filtered"]/1000),
+         "name": "Filtered",
+         "line": {"color": "#00b359", "width": 3}
+        },
+
+        # --- ポイント ---
+        {
+            "x": [
+                result["t0"],
+                result["t_30"],
+                result["t_90"],   # ← 90%
+                result["t_50"],
+                result["t0"] + result["t1"]
+            ],
+            "y": [
+                0,
+                (result["v_pk"]*0.3)/1000,
+                (result["v_pk"]*0.9)/1000,
+                (result["v_pk"]*0.5)/1000,
+                0
+            ],
+            "mode": "markers",
+            "marker": {"color": "red", "size": 8},
+            "name": "Points"
+        }
+    ]
+
+    # --- ★罫線（これが抜けてた） ---
+    layout = {
+        "template": "plotly_white",
+        "xaxis": {"title": "Time [us]"},
+        "yaxis": {"title": "Voltage [kV]"},
+        # ここが重要（余白を極限まで削る）
+        "margin": dict(l=50, r=10, t=30, b=30, pad=0),
+        # 図全体をキャンバスにフィット
+        "autosize": True,
+    
+        "shapes": [
+            # T1ライン
+            {
+                "type": "line",
+                "x0": result["t0"],
+                "y0": 0,
+                "x1": result["t0"] + result["t1"],
+                "y1": result["v_pk"]/1000,
+                "line": {"color": "red", "dash": "dashdot", "width": 1}
+            },
+            {
+                "type": "line",
+                "x0": result["t0"] + result["t1"],
+                "y0": result["v_pk"]/1000,
+                "x1": result["t0"] + result["t1"],
+                "y1": 0,
+                "line": {"color": "red", "dash": "dashdot", "width": 1}
+            },
+
+            # 50% 水平
+            {
+                "type": "line",
+                "x0": result["t0"],
+                "y0": (result["v_pk"]*0.5)/1000,
+                "x1": result["t_50"],
+                "y1": (result["v_pk"]*0.5)/1000,
+                "line": {"color": "gray", "dash": "dash", "width": 1}
+            },
+
+            # 50% 垂直
+            {
+                "type": "line",
+                "x0": result["t_50"],
+                "y0": (result["v_pk"]*0.5)/1000,
+                "x1": result["t_50"],
+                "y1": 0,
+                "line": {"color": "gray", "dash": "dash", "width": 1}
+            }
+        ]
+    }
+
+    # --- ★ここ重要：layoutを渡す ---
+    window.Plotly.newPlot(
+        "plot-main",
+        to_js(main_traces),
+        to_js(layout)
+    )
+
+    # --- FFT ---
+    xf = result["xf"]
+    yf = result["yf"]
+    k_factor = result["k"]
+
+    window.console.log(
+        f"FFT debug: len={len(xf)}, positive={np.sum(xf>0)}"
+    )
+
+    n = len(yf)
+    mask_fft = xf > 0
+
+    window.plotFFTInJS(
+        to_js((xf[mask_fft]/1e6).tolist()),
+        to_js((np.abs(yf[mask_fft])*2/n).tolist()),
+        to_js((np.abs(yf[mask_fft]*k_factor[mask_fft])*2/n).tolist()),
+        10.0
+    )
+
+    # --- ステータス ---
+    popt = result["popt"]
+
+    status_text = (
+        f"Completed: Voltage={result['v_pk']/1000:.2f}kV  "
+        f"T1={result['t1']:.2f}us  "
+        f"T2={result['t2']:.2f}us\n"
+        f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
+        f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
+    )
+
+    update_status(status_text)
+    
 @when("change", "#file-upload")
 async def handle_file(event):
     files = event.target.files
-    if not files: return
+    if not files:
+        return
+
     f = files.item(0)
     file_info_el.innerText = f"選択ファイル: {f.name}"
     update_status("Analyzing...", animated=True)
-    
+
     js_log = window.console.log
-    
+
     try:
-# --- 1. ファイルの全行読み込み ---
-        array_buffer = await f.arrayBuffer()
-        raw_bytes = array_buffer.to_bytes()
-        text_data = raw_bytes.decode('utf-8', errors='ignore')
-        lines = text_data.splitlines()
-        
-        # 判定用フラグの初期化
-        s_rate = h_res = h_off = None
-        
-        # --- 2. 最初の20行で「横河の物理定義」が含まれているかだけをチェック ---
-        for line in lines[:20]:
-            parts = [p.strip().replace('"', '') for p in line.split(',')]
-            if len(parts) >= 2:
-                key, val = parts[0], parts[1]
-                if "SampleRate" in key:
-                    try: s_rate = float(val)
-                    except: pass
-                elif "HResolution" in key:
-                    try: h_res = float(val)
-                    except: pass
-                elif "HOffset" in key:
-                    try: h_off = float(val)
-                    except: pass
+        # ① パース
+        parsed = await parse_waveform_file(f, meta={})
 
-        # --- 3. メイン分岐ロジック ---
-        # 横河の3つの物理定数が完全に揃った場合のみ、横河専用の固定行読み込みを実行
-        if all(v is not None for v in [s_rate, h_res, h_off]):
-            js_log("Yokogawa DL format recognized. Using fixed-line extraction.")
-            v_raw_list = []
-            # 18行目以降、横河特有の「,電圧」形式を抽出
-            for data_line in lines[17:]:
-                d_parts = data_line.split(',')
-                if len(d_parts) >= 2 and d_parts[1].strip():
-                    try: v_raw_list.append(float(d_parts[1].strip()))
-                    except: continue
-            
-            v_raw_orig = np.array(v_raw_list)
-            dt_sec = h_res if h_res > 0 else (1.0 / s_rate)
-            time_col = h_off + np.arange(len(v_raw_orig)) * dt_sec
+        v_raw_v = parsed["voltage"]
+        dt_sec = parsed["dt"]
+        dt_us = parsed["dt_us"]
+        fs_mhz = parsed["fs_mhz"]
 
-        else:
-            # 【重要】ここが「以前読み込めていた」すべての形式を救う、元のロジックです
-            # 欧州メーカー、岩通、テクトロ、その他の汎用CSVはすべてこちらを通ります
-            js_log("Generic/Legacy CSV format recognized. Using exhaustive scan.")
-            processed_values = []
-            for line in lines:
-                # 従来の万能型区切り文字処理
-                parts = line.replace(',', ' ').replace('\t', ' ').replace('"', ' ').split()
-                nums = []
-                for p in parts:
-                    try:
-                        nums.append(float(p))
-                    except ValueError:
-                        continue
-                if nums:
-                    processed_values.append(nums)
+        js_log(f"Loaded {len(v_raw_v)} samples")
 
-            if not processed_values:
-                raise ValueError("数値データが見つかりません。")
-
-            # これまでの列構成判断ロジックを100%維持
-            max_cols = max(len(row) for row in processed_values)
-            if max_cols >= 2:
-                # 2列以上あれば [0]:時間, [1]:電圧 とみなす
-                time_col = np.array([r[0] for r in processed_values if len(r) >= 2])
-                v_raw_orig = np.array([r[1] for r in processed_values if len(r) >= 2])
-                dt_sec = (time_col[-1] - time_col[0]) / (len(time_col) - 1) if len(time_col) > 1 else 0
-            else:
-                # 1列のみであれば電圧のみとみなし、推測ロジックを適用
-                v_raw_orig = np.array([r[0] for r in processed_values])
-                # メタデータ(XINCR等)があれば使い、なければデータ点数から推測
-                dt_sec = float(meta.get("XINCR", 0.0))
-                if dt_sec == 0:
-                    dt_sec = 4e-8 if len(v_raw_orig) < 50000 else 8.333333e-9
-                time_col = np.arange(len(v_raw_orig)) * dt_sec
-
-        # --- 4. 共通の物理量確定 ---
-        dt_us = dt_sec * 1e6
-        fs_mhz = 1.0 / dt_us if dt_us > 0 else 0
-        
-        try:
-            ratio_val = float(document.getElementById("ratioInput").value or 1.0)
-        except: ratio_val = 1.0
-        v_raw_v = v_raw_orig * ratio_val
-
-
-
-
-
-    
-
-        # --- 3. 仮想ゼロ点(T0)特定 ---
-        abs_v_raw = np.abs(v_raw_v)
-        v_max_raw = np.max(abs_v_raw)
-        idx_start = np.where(abs_v_raw > v_max_raw * 0.05)[0][0]
-        t_us = (np.arange(len(v_raw_v)) - idx_start) * dt_us
-
-        # --- 4. Fitting ---
-        t_max_idx = np.argmax(abs_v_raw)
-        actual_polarity = 1.0 if v_raw_v[t_max_idx] >= 0 else -1.0
-        fit_mask = t_us >= 0
-        p0 = [v_max_raw * 2.0, 5.0, v_max_raw * 1.8, 0.5]
-        
-        popt, _ = curve_fit(v_model, t_us[fit_mask], abs_v_raw[fit_mask], p0=p0, maxfev=10000)
-        v_fit_v = np.zeros_like(v_raw_v)
-        v_fit_v[fit_mask] = v_model(t_us[fit_mask], *popt) * actual_polarity
-        residual_v = v_raw_v - v_fit_v
-
-        # --- 5. FFT & Filter (サンプリング周期 dt_sec に完全追従) ---
-        n = len(v_raw_v)
-        yf = fft(residual_v - np.mean(residual_v))
-        xf = fftfreq(n, dt_sec)
-        k_factor = 1.0 / (1.0 + 2.2 * (xf/1e6)**2)
-        v_filtered_total = v_fit_v + ifft(yf * k_factor).real
-    
-        # --- 6. T1, T2 精密計測 ---
-        abs_v_filt = np.abs(v_filtered_total)
-        pk_idx = np.argmax(abs_v_filt)
-        v_pk = v_filtered_total[pk_idx]
-        
-        idx_30 = np.interp(abs_v_filt[pk_idx]*0.3, abs_v_filt[:pk_idx], np.arange(pk_idx))
-        idx_90 = np.interp(abs_v_filt[pk_idx]*0.9, abs_v_filt[:pk_idx], np.arange(pk_idx))
-        idx_50 = np.interp(abs_v_filt[pk_idx]*0.5, abs_v_filt[pk_idx:][::-1], np.arange(n-1, pk_idx-1, -1))
-        
-        # 物理計算 T1 = ((idx90 - idx30) * dt_us) / 0.6
-        res_t1 = ((idx_90 - idx_30) * dt_us) / 0.6
-        t_30_us = (idx_30 - idx_start) * dt_us
-        res_t0 = t_30_us - (0.3 * res_t1)
-        t_50_us = (idx_50 - idx_start) * dt_us
-        res_t2 = t_50_us - res_t0
-
-        # --- 7. Plotly表示 (Residual含む) ---
-        main_traces = [
-            {"x": safe_list(t_us), "y": safe_list(v_raw_v/1000), "name": "Raw", "line": {"color": "#3498db", "width": 1}},
-            {"x": safe_list(t_us), "y": safe_list(v_filtered_total/1000), "name": "Filtered", "line": {"color": "#2ecc71", "width": 3}},
-            {"x": safe_list(t_us), "y": safe_list(residual_v/10000), "name": "Residual", "line": {"color": "gray", "width": 1}},
-            {"x": [res_t0, t_30_us, (idx_90-idx_start)*dt_us, t_50_us, res_t0 + res_t1, t_50_us], "y": [0, (v_pk*0.3)/1000, (v_pk*0.9)/1000, (v_pk*0.5)/1000, 0, 0], "mode": "markers", "marker": {"color": "red", "size": 8}, "name": "Points"}
-        ]
-        
-        main_layout = {
-            "template": "plotly_white", "height": 600,
-            "xaxis": {"title": "Time [us]","zeroline": False},         
-            "yaxis": {"title": "Voltage [kV]", "automargin": True,"zeroline": False},
-            "shapes": [
-                {"type": "line", "x0": res_t0, "y0": 0, "x1": res_t0 + res_t1, "y1": v_pk/1000, "line": {"color": "red", "dash": "dashdot", "width": 1}},
-    {"type": "line", "x0": res_t0 + res_t1, "y0": v_pk/1000, "x1": res_t0 + res_t1, "y1": 0, "line": {"color": "red", "dash": "dashdot", "width": 1}},
-                {"type": "line", "x0": t_50_us, "y0": (v_pk*0.5)/1000, "x1": res_t0, "y1": (v_pk*0.5)/1000, "line": {"color": "gray", "dash": "dash", "width": 1}},
-                {"type": "line", "x0": t_50_us, "y0": (v_pk*0.5)/1000, "x1": t_50_us, "y1": 0, "line": {"color": "gray", "dash": "dash", "width": 1}}
-            ],
-            "showlegend": True
-        }
-        window.Plotly.newPlot("plot-main", to_js(main_traces), to_js(main_layout))
-        
-        # --- 8. JS FFT 呼び出し ---
-        mask_fft = xf > 0
-        window.plotFFTInJS(to_js((xf[mask_fft]/1e6).tolist()), to_js((np.abs(yf[mask_fft])*2/n).tolist()), to_js((np.abs(yf[mask_fft]*k_factor[mask_fft])*2/n).tolist()), 10.0)
-
-        # --- 9. ステータス更新 ---
-        status_text = (
-            f"Completed: Voltage={v_pk/1000:.2f}kV  T1={res_t1:.2f}us  T2={res_t2:.2f}us\n"
-            f"Sampling Rate: {fs_mhz:.1f}MHz | Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}, "
+        # ② 解析
+        analysis = analyze_waveform(
+            v_raw_v,
+            dt_sec,
+            dt_us,
+            fs_mhz
         )
-        update_status(status_text)
-        js_log(f"Debug [idx_30:{idx_30:.2f} idx_90:{idx_90:.2f} dt_us:{dt_us:.6f} res_t1:{res_t1:.4f}]")
+
+        # ③ 描画
+        render_results(analysis)
+
+        """update_status(
+            f"Done: fs={fs_mhz:.1f}MHz / samples={len(v_raw_v)}"
+        )"""
 
     except Exception as e:
         update_status(f"Error: {str(e)}")
-        js_log(f"Error Trace: {str(e)}")
+        window.console.error(str(e))
 
-# UI初期表示
+
+    
 document.getElementById("ui-area").style.display = "block"
-if hasattr(window, "initTimerInterval"): window.clearInterval(window.initTimerInterval)
-update_status(f"READY (Initial Load: {document.getElementById('init-timer').innerText}s)")
+
+if hasattr(window, "initTimerInterval"):
+    window.clearInterval(window.initTimerInterval)
+
+init_time = document.getElementById("init-timer").innerText
+update_status(f"READY (Initial Load: {init_time}s)")
 </script>
 
 
@@ -301,7 +582,7 @@ function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
         name: 'Raw',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#3498db', width: 1 }
+        line: { color: '#dcdcdc', width: 1 }
     };
 
     // 2. Filteredデータのトレース定義 (青)
@@ -311,7 +592,7 @@ function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
         name: 'Filtered',
         type: 'scatter',
         mode: 'lines',
-        line: { color: '#2ecc71', width: 3 }
+        line: { color: '#00b359', width: 3 }
     };
 
     // 3. レイアウト設定（横幅最大化 & 凡例内包）
