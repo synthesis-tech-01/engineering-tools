@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-            <!-- Google tag (gtag.js) -->
+      <!-- Google tag (gtag.js) -->
 　　　<script async src="https://googletagmanager.com/gtag/js?id=G-E4B6H1NV9J"></script>
     　<script>
      　 window.dataLayer = window.dataLayer || [];
@@ -13,6 +13,7 @@
     
     <meta charset="UTF-8">
     <title>IMPULSE WAVE ANALYZE</title>
+    
     <link rel="stylesheet" href="style.css">
     <script type="module" src="https://pyscript.net/releases/2024.1.1/core.js"></script>
     <script src="https://cdn.plot.ly/plotly-2.31.1.min.js" charset="utf-8"></script>
@@ -27,69 +28,85 @@
         #file-info { margin-left: 15px; color: #2c3e50; font-size: 13px; font-weight: bold; vertical-align: middle; }
         h3 { color: #2c3e50; border-left: 5px solid #3498db; padding-left: 10px; margin-top: 25px; }
 
-#csv-modal {
-  display: none;              /* ← 初期は非表示 */
-  position: fixed;
-  top: 10%;
-  left: 10%;
-  width: 80%;
-  height: 70%;
-  background: white;
-  border: 1px solid #ccc;
-  z-index: 9999;
+/*対応できないCSVファイルはファイルプレビューさせてデータの始まり行をしてい、サンプリングレートも入力させる  */
+        #csv-modal {
+          display: none;              /* ← 初期は非表示 */
+          position: fixed;
+          top: 10%;
+          left: 10%;
+          width: 80%;
+          height: 70%;
+          background: white;
+          border: 1px solid #ccc;
+          z-index: 9999;
+        
+          display: none;
+          flex-direction: column;     /* ← 縦分割 */
+        }
 
-  display: none;
-  flex-direction: column;     /* ← 縦分割 */
-}
-
-/* ヘッダー */
-#fixed-header {
-  flex: 0 0 auto;
-  padding: 10px;
-  background: white;
-  border-bottom: 1px solid #ddd;
-}
-
-/* スクロール領域 */
-#csv-preview {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  font-family: monospace;
-}
-
-/* フッター */
-#csv-footer {
-  flex: 0 0 auto;
-  padding: 10px;
-  border-top: 1px solid #ddd;
-  background: white;
-}
-    </style>
-    
+        /* ヘッダー */
+        #fixed-header {
+          flex: 0 0 auto;
+          padding: 10px;
+          background: white;
+          border-bottom: 1px solid #ddd;
+        }
+        
+        /* スクロール領域 */
+        #csv-preview {
+          flex: 1 1 auto;
+          overflow-y: auto;
+          font-family: monospace;
+        }
+        
+        /* フッター */
+        #csv-footer {
+          flex: 0 0 auto;
+          padding: 10px;
+          border-top: 1px solid #ddd;
+          background: white;
+        }
+</style>
+<!--ここから本画面のデザイン  -->
 </head>
 <body>
-<div id="csv-modal">
 
-  <div id="fixed-header">
-    <h3>
-      Automatic detection not possible. Click the starting row for the data.<br>
-      自動判別不能 データ開始行をクリックしてください
-    </h3>
+    <!--CSV未対応ファイルを手動表示させる 初期は見えない -->
+    <div id="csv-modal">
+    
+      <div id="fixed-header">
+        <h3>
+          Automatic detection not possible. Click the starting row for the data.<br>
+          And Input the Sampling Rate.<br>
+          自動判別不能 データ開始行をクリックしてください。サンプリングレートも入力して下さい。
+        </h3>
+    
+        <div style="font-weight:bold;">
+          Selected Row: <span id="selected-line">No Select</span>
+        </div>
+      </div>
+    
+      <div id="csv-preview"></div>
+    
+      <div id="csv-footer">
+        Sampling Rate (MHz):
+        <input type="number" id="mhz-input" value="1">
+        <style>
+          .big-button {
+            font-size: 14px;
+            padding: 10px 20px;
+            border-radius: 8px;
+            cursor: pointer;
+          }
+        </style>
 
-    <div style="font-weight:bold;">
-      Selected Row: <span id="selected-line">No Select</span>
+<button class="big-button" onclick="confirmCSVSelection()">
+  OK
+</button>
+      </div>
+    
     </div>
-  </div>
 
-  <div id="csv-preview"></div>
-
-  <div id="csv-footer">
-    Sampling Rate (MHz):
-    <input type="number" id="mhz-input" value="1">
-    <button onclick="confirmCSVSelection()">OK</button>
-  </div>
-
-</div>
     
 <div class="container">
     <a href="index.html" class="btn btn-back">← Back to TOP</a>
@@ -112,29 +129,33 @@
         </div>
 
         <!-- Ratio入力（横並び） -->
-    <div style="display: flex; align-items: center; gap: 5px;">
-        <label for="ratioInput" style="white-space: nowrap;">Ratio:</label>
-        <input type="number" id="ratioInput" value="1" step="1" style="width: 120px;">
-    </div>
-        
+        <div style="display: flex; align-items: center; gap: 5px;">
+            <label for="ratioInput" style="white-space: nowrap;">Ratio:</label>
+            <input type="number" id="ratioInput" value="1" step="1" style="width: 120px;">
+        </div>
+        <!--波形グラフ  -->
         <h3>Waveform Analysis</h3>
         <div id="plot-main"></div> 
-    
+    　　<!--FFTグラフ  -->
         <h3>FFT Analysis [Residual Data]</h3>
         <div id="plot-fft"></div>
     </div>
 
+    <!--印刷ボタン  -->
     <button class="btn btn-pdf btn-wide-action" onclick="window.print();">PDF Report Export</button>
+    <!--問い合わせメール起動  -->
     <button class="btn btn-main btn-wide-action" style="margin-top: 10px; background: #28a745;" onclick="sendContactEmailIMPULSE()">
             Inquiry for Detailed Analysis (Open Email)/詳細な検討をお問い合わせ（メール起動）
     </button>
 </div>
-    
+
+<!--pyhhon起動  -->
 <py-config>
     packages = ["numpy", "scipy"]
 </py-config>
 
 <script type="py">
+#ライブラリ宣言
 import numpy as np
 from scipy.optimize import curve_fit
 from numpy.fft import fft, fftfreq, ifft
@@ -144,15 +165,17 @@ import io
 import json
 
 print("PYTHON STARTED")
-    
+
+#黒背景に緑文字の状況表示欄    
 status_el = document.getElementById("status")
+#選択したファイル    
 file_info_el = document.getElementById("file-info")
 
 def update_status(text, animated=False):
     status_el.innerText = text
     if animated: status_el.classList.add("dot-ani")
     else: status_el.classList.remove("dot-ani")
-
+#フィッティングさせる基底式　重要　vpeak * np.exp(-t / b) - shift * np.exp(-t / a)　t/bとt/aでないと丸みがありフィットしない
 def v_model(t_us, vpeak, b, shift, a):
     t = np.where(t_us <= 1e-4, 1e-4, t_us)
     return vpeak * np.exp(-t / b) - shift * np.exp(-t / a)
@@ -177,13 +200,13 @@ async def parse_waveform_file(f, meta):
 
     return _finalize(result)
 
-    
+#CSV/txtファイルなどを読む    
 async def _read_file_text(f):
     array_buffer = await f.arrayBuffer()
     raw_bytes = array_buffer.to_bytes()
     return raw_bytes.decode('utf-8', errors='ignore')
 
-#yokogawa or それ以外　ファイル形式    
+#yokogawa DLシリーズはヘッダと電圧レンジのみ　時間軸情報なし　DLMシリーズはヘッダーと１列目に時間軸もあり　or それ以外　ファイル形式    
 def _detect_format(lines):
     s_rate = h_res = h_off = None
 
@@ -206,7 +229,7 @@ def _detect_format(lines):
 
     if all(v is not None for v in [s_rate, h_res, h_off]):
         return "yokogawa"
-
+#横河DLシリーズ以外はgenericとする　後述するがさらに分岐していく
     return "generic"
 
     
@@ -233,7 +256,7 @@ def _parse_yokogawa(lines):
 
     return {"time": t, "voltage": v, "dt": dt}
 
-
+#横河以外と選別したファイルをさらに読み解く
 async def _parse_generic(lines, meta):
     rows = []
 
@@ -340,7 +363,7 @@ def _extract_yoko_meta(lines):
             pass
 
     return s_rate, h_res, h_off    
-
+# データを整形　時間、電圧、時間間隔、サンプリングレート、電圧のRatio
 def _finalize(result):
     t = result["time"]
     v = result["voltage"]
@@ -441,7 +464,8 @@ def _is_float(self, val):
         return True
     except:
         return False
-    
+
+#フィッティングデータ解析
 def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
     t_us, idx_start = _compute_time_axis(v_raw_v, dt_us)
 
@@ -468,7 +492,7 @@ def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
         "fs_mhz": fs_mhz,
         "v_raw": v_raw_v
     }
-
+#時間軸をデータ配列へ
 def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
     abs_v = np.abs(v_raw_v)
     v_max = np.max(abs_v)
@@ -483,7 +507,7 @@ def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
 
     return t_us, idx_start
 
-    
+#フィッティングデータ解析    
 def _fit_waveform(v_raw_v, t_us):
     abs_v = np.abs(v_raw_v)
 
@@ -512,6 +536,7 @@ def _fit_waveform(v_raw_v, t_us):
         "popt": popt
     }
 
+#FFTとK-Factor
 def _apply_fft_filter(v_raw_v, v_fit, dt_sec):
     n = len(v_raw_v)
 
@@ -530,6 +555,7 @@ def _apply_fft_filter(v_raw_v, v_fit, dt_sec):
         "k": k
     }
 
+#T1,T2計測への各点を座標化
 def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
     abs_v = np.abs(v_filtered)
 
@@ -568,6 +594,7 @@ def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
         "idx_start": idx_start
     }
 
+#解析結果をグラフへ    
 def render_results(result):
     window.console.log(result.keys())
 
@@ -703,7 +730,8 @@ def render_results(result):
     )
 
     update_status(status_text)
-    
+
+#実際の動作コード　イベントハンドラー    
 @when("change", "#file-upload")
 async def handle_file(event):
     files = event.target.files
@@ -757,13 +785,11 @@ update_status(f"READY (Initial Load: {init_time}s)")
 if hasattr(window, "stopInitTimer"):
     window.stopInitTimer()
 </script>
+<!--ここまでpyscript やはりフィッティング関連関数が便利で正確  -->
 
 
-
-
-    
+<!--ここからjavascript　ここではFFTグラフ　下側やサポート対応しないcsvファイルを手動にてパラメーターセットさせるための部品と動作  -->
 <script>
-    
 //未対応CSVファイルが来たらユーザーにデータ始まり行とサンプリングレートを
 window.askUserForCSVFormat = function(previewText) {
     return new Promise((resolve) => {
@@ -942,7 +968,7 @@ function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
             timerEl.innerText = elapsed.toFixed(1);
         }, 100);
     })();
-
+// pyscript　と　javascript間のデータやり取りで色々苦労する　
 window.stopInitTimer = function() {
     if (window.initTimerInterval) {
         clearInterval(window.initTimerInterval);
@@ -950,7 +976,8 @@ window.stopInitTimer = function() {
     }
 };
 
-    
+
+// ページ巻末の印刷やメール問い合わせなど　ここは他のhtmlページと共通
 function sendContactEmailIMPULSE() {
     
     const subject = encodeURIComponent("Inquiry regarding IMPULSE Test Configuration / インパルス試験構成の相談");
