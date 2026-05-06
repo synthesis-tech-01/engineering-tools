@@ -26,39 +26,71 @@
         .file-label { display: inline-block; padding: 10px 20px; background: #3498db; color: white; border-radius: 5px; cursor: pointer; font-weight: bold; }
         #file-info { margin-left: 15px; color: #2c3e50; font-size: 13px; font-weight: bold; vertical-align: middle; }
         h3 { color: #2c3e50; border-left: 5px solid #3498db; padding-left: 10px; margin-top: 25px; }
+
+#csv-modal {
+  display: none;              /* ← 初期は非表示 */
+  position: fixed;
+  top: 10%;
+  left: 10%;
+  width: 80%;
+  height: 70%;
+  background: white;
+  border: 1px solid #ccc;
+  z-index: 9999;
+
+  display: none;
+  flex-direction: column;     /* ← 縦分割 */
+}
+
+/* ヘッダー */
+#fixed-header {
+  flex: 0 0 auto;
+  padding: 10px;
+  background: white;
+  border-bottom: 1px solid #ddd;
+}
+
+/* スクロール領域 */
+#csv-preview {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  font-family: monospace;
+}
+
+/* フッター */
+#csv-footer {
+  flex: 0 0 auto;
+  padding: 10px;
+  border-top: 1px solid #ddd;
+  background: white;
+}
     </style>
+    
 </head>
 <body>
-<div id="csv-modal" style="
-  display:none;
-  position:fixed;
-  top:10%;
-  left:10%;
-  width:80%;
-  height:70%;
-  background:white;
-  border:1px solid #ccc;
-  overflow:auto;
-  z-index:9999;
-  padding:10px;
-">
+<div id="csv-modal">
 
-  <h3>データ開始行をクリックしてください</h3>
+  <div id="fixed-header">
+    <h3>
+      Automatic detection not possible. Click the starting row for the data.<br>
+      自動判別不能 データ開始行をクリックしてください
+    </h3>
 
-  <!-- ★ここに追加 -->
-  <div style="margin-bottom:10px; font-weight:bold;">
-    選択行: <span id="selected-line">未選択</span>
+    <div style="font-weight:bold;">
+      Selected Row: <span id="selected-line">No Select</span>
+    </div>
   </div>
 
-  <div id="csv-preview" style="font-family:monospace;"></div>
+  <div id="csv-preview"></div>
 
-  <div style="margin-top:10px;">
+  <div id="csv-footer">
     Sampling Rate (MHz):
     <input type="number" id="mhz-input" value="1">
     <button onclick="confirmCSVSelection()">OK</button>
   </div>
 
-</div>    
+</div>
+    
 <div class="container">
     <a href="index.html" class="btn btn-back">← Back to TOP</a>
     <div id="pdf-area">
@@ -742,7 +774,7 @@ window.askUserForCSVFormat = function(previewText) {
         const mhzInput = document.getElementById("mhz-input");
 
         preview.innerHTML = "";
-        modal.style.display = "block";
+        modal.style.display = "flex";
 
         let selectedIdx = null;
 
@@ -770,7 +802,7 @@ window.askUserForCSVFormat = function(previewText) {
             }
 
             // クリック選択
-            div.ondblclick = () => {
+            div.onclick = () => {
                 selectedIdx = idx;
             
                 // ハイライトだけ
@@ -784,12 +816,6 @@ window.askUserForCSVFormat = function(previewText) {
                 // ★確定はしない
                 document.getElementById("selected-line").innerText = `${idx} : ${line}`;
             };
-
-            // ダブルクリックで即確定
-            //div.ondblclick = () => {
-            //    selectedIdx = idx;
-            //    confirmSelection();
-            //};
 
             // 元の色保存（ハイライト復元用）
             div.dataset.baseColor = div.style.background;
