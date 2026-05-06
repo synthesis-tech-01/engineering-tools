@@ -28,8 +28,37 @@
         h3 { color: #2c3e50; border-left: 5px solid #3498db; padding-left: 10px; margin-top: 25px; }
     </style>
 </head>
-    
 <body>
+<div id="csv-modal" style="
+  display:none;
+  position:fixed;
+  top:10%;
+  left:10%;
+  width:80%;
+  height:70%;
+  background:white;
+  border:1px solid #ccc;
+  overflow:auto;
+  z-index:9999;
+  padding:10px;
+">
+
+  <h3>データ開始行をクリックしてください</h3>
+
+  <!-- ★ここに追加 -->
+  <div style="margin-bottom:10px; font-weight:bold;">
+    選択行: <span id="selected-line">未選択</span>
+  </div>
+
+  <div id="csv-preview" style="font-family:monospace;"></div>
+
+  <div style="margin-top:10px;">
+    Sampling Rate (MHz):
+    <input type="number" id="mhz-input" value="1">
+    <button onclick="confirmCSVSelection()">OK</button>
+  </div>
+
+</div>    
 <div class="container">
     <a href="index.html" class="btn btn-back">← Back to TOP</a>
     <div id="pdf-area">
@@ -78,6 +107,7 @@ import numpy as np
 from scipy.optimize import curve_fit
 from numpy.fft import fft, fftfreq, ifft
 from pyscript import window, document, when
+from collections import Counter    
 import io
 import json
 
@@ -111,7 +141,7 @@ async def parse_waveform_file(f, meta):
     if fmt == "yokogawa":
         result = _parse_yokogawa(lines)
     else:
-        result = _parse_generic(lines, meta)
+        result = await _parse_generic(lines, meta)
 
     return _finalize(result)
 
@@ -171,11 +201,13 @@ def _parse_yokogawa(lines):
 
     return {"time": t, "voltage": v, "dt": dt}
 
-def _parse_generic(lines, meta):
-    js_log = window.console.log   # ←追加
 
+async def _parse_generic(lines, meta):
     rows = []
 
+    # =========================
+    # ① 数値抽出
+    # =========================
     for line in lines:
         parts = line.replace(',', ' ').replace('\t', ' ').replace('"', ' ').split()
 
@@ -192,21 +224,69 @@ def _parse_generic(lines, meta):
     if not rows:
         raise ValueError("数値データが見つかりません。")
 
-    max_cols = max(len(r) for r in rows)
+    #ヘッダだけ2列
+    #データは1列
+    #→ max_cols=2
+    #→ 2列扱い
+    #→ データ行ほぼ全部捨てられる
+    #「現場CSVは絶対に汚い」
+    valid_rows = [r for r in rows if len(r) >= 1]
 
-    if max_cols >= 2:
+    tail = valid_rows[int(len(valid_rows)*0.2):]
+    if not tail:
+        tail = valid_rows
+    
+    col_counts = [len(r) for r in tail]
+    most_common_cols = Counter(col_counts).most_common(1)[0][0]
+    
+    # =========================
+    # ② 2列以上（time, voltage）
+    # =========================
+    if most_common_cols >= 2:
         t = np.array([r[0] for r in rows if len(r) >= 2])
         v = np.array([r[1] for r in rows if len(r) >= 2])
-        dt = (t[-1] - t[0]) / (len(t) - 1) if len(t) > 1 else 0
-    else:
+
+        if len(t) > 1:
+            dt = (t[-1] - t[0]) / (len(t) - 1)
+        else:
+            dt = 0.0
+
+        return {"time": t, "voltage": v, "dt": dt}
+
+    # =========================
+    # ③ 1列データ
+    # =========================
+    elif most_common_cols == 1:
         v = np.array([r[0] for r in rows])
-        dt = float(meta.get("XINCR", 0.0)) or (
-            4e-8 if len(v) < 50000 else 8.333333e-9
+    
+        dt = float(meta.get("XINCR", 0.0))
+    
+        # ★メタがあるときだけ自動処理
+        if dt > 0:
+            t = np.arange(len(v)) * dt
+            return {"time": t, "voltage": v, "dt": dt}
+    
+        # ★それ以外は必ずUI
+        user_input = await _ask_user_fallback(lines)
+    
+        return _parse_with_user_setting(
+            lines,
+            user_input["start_idx"],
+            user_input["mhz"]
         )
-        t = np.arange(len(v)) * dt
+    
+    # =========================
+    # ④ それ以外（ほぼ来ないが保険）
+    # =========================
+    else:
+        user_input = await _ask_user_fallback(lines)
 
-    return {"time": t, "voltage": v, "dt": dt}
-
+        return _parse_with_user_setting(
+            lines,
+            user_input["start_idx"],
+            user_input["mhz"]
+        )
+    
 def _extract_yoko_meta(lines):
     s_rate = h_res = h_off = None
 
@@ -251,6 +331,85 @@ def _finalize(result):
     }
 
 
+#対応できないcsvファイル形式が来たらユーザーに主要なパラメーターを手入力させる
+def _parse_with_user_setting(lines, start_idx, mhz_val):
+
+    rows = []
+
+    # =========================
+    # ① カンマ除去＆数値抽出
+    # =========================
+    for line in lines[start_idx:]:
+        parts = line.replace(',', ' ').replace('\t', ' ').replace('"', ' ').split()
+
+        nums = []
+        for p in parts:
+            try:
+                nums.append(float(p))
+            except:
+                continue
+
+        if nums:
+            rows.append(nums)
+
+    if not rows:
+        raise ValueError("数値データが見つかりません。")
+
+    # =========================
+    # ② 列数判定
+    # =========================
+    #ヘッダだけ2列
+    #データは1列
+    #→ max_cols=2
+    #→ 2列扱い
+    #→ データ行ほぼ全部捨てられる
+    #「現場CSVは絶対に汚い」
+    valid_rows = [r for r in rows if len(r) >= 1]
+
+    tail = valid_rows[int(len(valid_rows)*0.2):]
+    if not tail:
+        tail = valid_rows
+    
+    col_counts = [len(r) for r in tail]
+    most_common_cols = Counter(col_counts).most_common(1)[0][0]
+    
+    if most_common_cols >= 2:
+        # 2列以上 → 2列目を電圧
+        v = np.array([r[1] for r in rows if len(r) >= 2])
+    else:
+        # 1列 → それが電圧
+        v = np.array([r[0] for r in rows])
+
+    # =========================
+    # ③ 時間軸生成
+    # =========================
+    dt = 1.0 / (float(mhz_val) * 1e6)
+    t = np.arange(len(v)) * dt
+
+    return {
+        "time": t,
+        "voltage": v,
+        "dt": dt
+    }
+
+#未対応ファイル形式ならば呼び出す    
+async def _ask_user_fallback(lines):
+    preview = "\n".join(lines[:30])
+
+    result = await window.askUserForCSVFormat(preview)
+
+    return {
+        "start_idx": int(result.start_idx),
+        "mhz": float(result.mhz)
+    }
+    
+def _is_float(self, val):
+    try:
+        float(val)
+        return True
+    except:
+        return False
+    
 def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
     t_us, idx_start = _compute_time_axis(v_raw_v, dt_us)
 
@@ -559,11 +718,12 @@ async def handle_file(event):
     
 document.getElementById("ui-area").style.display = "block"
 
-if hasattr(window, "initTimerInterval"):
-    window.clearInterval(window.initTimerInterval)
 
 init_time = document.getElementById("init-timer").innerText
 update_status(f"READY (Initial Load: {init_time}s)")
+    
+if hasattr(window, "stopInitTimer"):
+    window.stopInitTimer()
 </script>
 
 
@@ -571,8 +731,122 @@ update_status(f"READY (Initial Load: {init_time}s)")
 
     
 <script>
+    
+//未対応CSVファイルが来たらユーザーにデータ始まり行とサンプリングレートを
+window.askUserForCSVFormat = function(previewText) {
+    return new Promise((resolve) => {
 
+        // ========= 要素取得 =========
+        const modal = document.getElementById("csv-modal");
+        const preview = document.getElementById("csv-preview");
+        const mhzInput = document.getElementById("mhz-input");
 
+        preview.innerHTML = "";
+        modal.style.display = "block";
+
+        let selectedIdx = null;
+
+        const lines = previewText.split("\n");
+
+        // ========= ユーティリティ =========
+        const isNumericLine = (line) => {
+            const cleaned = line.replace(/,/g, " ").trim();
+            const parts = cleaned.split(/\s+/);
+            return parts.some(p => !isNaN(parseFloat(p)));
+        };
+
+        // ========= プレビュー生成 =========
+        lines.forEach((line, idx) => {
+            const div = document.createElement("div");
+
+            div.textContent = `[${idx}] ${line}`;
+            div.style.cursor = "pointer";
+            div.style.padding = "2px 6px";
+            div.style.borderBottom = "1px solid #eee";
+
+            // ★ 数値っぽい行を薄緑
+            if (isNumericLine(line)) {
+                div.style.background = "#f3fff3";
+            }
+
+            // クリック選択
+            div.ondblclick = () => {
+                selectedIdx = idx;
+            
+                // ハイライトだけ
+                [...preview.children].forEach(c => {
+                    c.style.background = c.dataset.baseColor || "";
+                });
+                div.style.background = "#d0ebff";
+            　　
+                mhzInput.focus();
+                mhzInput.select();
+                // ★確定はしない
+                document.getElementById("selected-line").innerText = `${idx} : ${line}`;
+            };
+
+            // ダブルクリックで即確定
+            //div.ondblclick = () => {
+            //    selectedIdx = idx;
+            //    confirmSelection();
+            //};
+
+            // 元の色保存（ハイライト復元用）
+            div.dataset.baseColor = div.style.background;
+
+            preview.appendChild(div);
+        });
+
+        // ========= 自動スクロール（最初の数値行へ） =========
+        const firstNumericIdx = lines.findIndex(isNumericLine);
+        if (firstNumericIdx >= 0) {
+            selectedIdx = firstNumericIdx;
+
+            setTimeout(() => {
+                const target = preview.children[firstNumericIdx];
+                if (target) {
+                    target.scrollIntoView({ block: "center" });
+                    target.style.background = "#d0ebff";
+                }
+            }, 50);
+        }
+
+        // ========= 確定処理 =========
+        function confirmSelection() {
+
+            if (selectedIdx === null) {
+                alert("データ開始行を選択してください");
+                return;
+            }
+
+            const mhz = parseFloat(mhzInput.value);
+
+            if (isNaN(mhz) || mhz <= 0) {
+                alert("有効なサンプリングレート(MHz)を入力してください");
+                return;
+            }
+
+            modal.style.display = "none";
+
+            resolve({
+                start_idx: selectedIdx,
+                mhz: mhz
+            });
+        }
+
+        // ========= OKボタン =========
+        window.confirmCSVSelection = confirmSelection;
+
+        // ========= ESCで閉じる =========
+        function handleEsc(e) {
+            if (e.key === "Escape") {
+                modal.style.display = "none";
+                document.removeEventListener("keydown", handleEsc);
+            }
+        }
+        document.addEventListener("keydown", handleEsc);
+    });
+};
     
 function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
     // 1. Rawデータのトレース定義 (緑)
@@ -643,7 +917,12 @@ function plotFFTInJS(freq, rawAmp, filteredAmp, f_limit) {
         }, 100);
     })();
 
-
+window.stopInitTimer = function() {
+    if (window.initTimerInterval) {
+        clearInterval(window.initTimerInterval);
+        window.initTimerInterval = null;
+    }
+};
 
     
 function sendContactEmailIMPULSE() {
