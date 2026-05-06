@@ -66,6 +66,14 @@
           border-top: 1px solid #ddd;
           background: white;
         }
+
+        #ui-area {
+            display: none;
+            flex-direction: row;
+            align-items: center;
+            gap: 10px;
+            flex-wrap: wrap;
+        }
 </style>
 <!--ここから本画面のデザイン  -->
 </head>
@@ -120,7 +128,13 @@
           </span>
         </div>  
         
-        <div id="ui-area" style="display:none;">
+        <div id="ui-area" style="display:none; align-items:center; gap:10px; flex-wrap:wrap;">    
+            <select name="waveform" id="waveform" style="padding: 5px; height: 38px;">
+                <option value="LI">LI</option>
+                <option value="SI">SI</option>
+                <!-- <option value="Superimporsed LI">SuperImporseLI</option> -->
+            </select>
+            
             <label class="file-label">
                 Select File/ファイルを選択 (CSV / TXT)
                 <input type="file" id="file-upload" accept=".csv,.txt" style="display:none;">
@@ -166,11 +180,44 @@ import json
 
 print("PYTHON STARTED")
 
+#LIかSIか   将来　重畳も増えるから 
+mode = "LI"
+processors = {}    
+
+#登録制にする    
+def register_mode(name):
+    def wrapper(func):
+        processors[name] = func
+        return func
+    return wrapper
+
+#LIの時    
+@register_mode("LI")
+def run_li(data):
+    return "LI result"
+    
+#SIの時
+@register_mode("SI")
+def run_si(data):
+    return "SI result"
+    
+#重畳の時
+@register_mode("SuperImporseLI")
+def run_super_imporse_li(data):
+    return "Super result"    
+
+def run_analysis(data):
+    return processors[mode](data)
+
+    
 #黒背景に緑文字の状況表示欄    
 status_el = document.getElementById("status")
 #選択したファイル    
 file_info_el = document.getElementById("file-info")
 
+def on_python_ready():
+    document.getElementById("control-panel").style.display = "flex"
+    
 def update_status(text, animated=False):
     status_el.innerText = text
     if animated: status_el.classList.add("dot-ani")
@@ -492,6 +539,7 @@ def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
         "fs_mhz": fs_mhz,
         "v_raw": v_raw_v
     }
+    
 #時間軸をデータ配列へ
 def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
     abs_v = np.abs(v_raw_v)
@@ -731,6 +779,46 @@ def render_results(result):
 
     update_status(status_text)
 
+
+#LI SI Super と展開していく
+async def run_pipeline(f):
+    parsed = await parse_waveform_file(f, meta={})
+
+    v_raw_v = parsed["voltage"]
+    dt_sec = parsed["dt"]
+    dt_us = parsed["dt_us"]
+    fs_mhz = parsed["fs_mhz"]
+
+    window.console.log(f"Loaded {len(v_raw_v)} samples")
+
+    return run_analysis(v_raw_v, dt_sec, dt_us, fs_mhz)
+
+#LI SI Super   で解析方法を分岐する 
+def run_analysis(v_raw_v, dt_sec, dt_us, fs_mhz):
+    if mode == "LI":
+        return analyze_li(v_raw_v, dt_sec, dt_us, fs_mhz)
+
+    elif mode == "SI":
+        return analyze_si(v_raw_v, dt_sec, dt_us, fs_mhz)
+
+    elif mode == "SuperImporsed LI":
+        return analyze_super_imporse_li(v_raw_v, dt_sec, dt_us, fs_mhz)
+
+    else:
+        raise ValueError(f"Unknown mode: {mode}")
+
+#LI解析    
+def analyze_li(v_raw_v, dt_sec, dt_us, fs_mhz):
+    return analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz)
+
+#SI解析    
+def analyze_si(v_raw_v, dt_sec, dt_us, fs_mhz):
+    # ここに新ロジック
+    return {
+        "type": "SI",
+        "result": "SI result"
+    }    
+    
 #実際の動作コード　イベントハンドラー    
 @when("change", "#file-upload")
 async def handle_file(event):
@@ -774,14 +862,19 @@ async def handle_file(event):
         update_status(f"Error: {str(e)}")
         window.console.error(str(e))
 
+#LI かSIかを選択したら値を持つ
+@when("change", "#waveform")
+def on_change(event):
+    global mode
+    mode = event.target.value
 
     
-document.getElementById("ui-area").style.display = "block"
-
-
+#パイソン起動後にファイル選択ボタンやLIorSIオプションを出現させる    
+document.getElementById("ui-area").style.display = "flex"
 init_time = document.getElementById("init-timer").innerText
 update_status(f"READY (Initial Load: {init_time}s)")
     
+#パイソン起動完了でストップウォッチが止まる    
 if hasattr(window, "stopInitTimer"):
     window.stopInitTimer()
 </script>
