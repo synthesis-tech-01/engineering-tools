@@ -113,7 +113,8 @@ input:focus {
     width: 100%;       /* 横幅いっぱいに広げる（必要に応じて調整） */
     min-height: 50px;  /* 押しやすい高さを確保 */
     box-sizing: border-box; /* パディングを含めたサイズ計算 */
-    background: #dc3545
+    background: #dc3545;
+    color: white
 }
 
 /* クリックした瞬間の視覚的フィードバック */
@@ -176,6 +177,23 @@ input:focus {
     width: 100%;      /* 必要に応じて横幅いっぱいに */
 }
 
+
+/* ボタンの共通スタイルと色を指定 */
+.btn-main.btn-contact {
+  margin-top: 10px;
+  background-color: #28a745;
+  color: white;
+  border: none;
+  padding: 10px 20px;
+  cursor: pointer;
+  border-radius: 4px;
+  /* 任意：ホバー時のエフェクトを追加するとより親切です */
+  transition: opacity 0.2s;
+}
+
+.btn-main.btn-contact:hover {
+  opacity: 0.8;
+}
 /* 計算結果ボックスの下にも少し余白を設ける */
 .result-box {
     margin-bottom: 20px;
