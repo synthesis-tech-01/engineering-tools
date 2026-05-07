@@ -118,6 +118,7 @@
     
 <div class="container">
     <a href="index.html" class="btn btn-back">← Back to TOP</a>
+    <!--印刷エリアはここから  -->
     <div id="pdf-area">
         <h2 style="color: blue;">IMPULSE WAVE ANALYZE/インパルス波形解析</h2>
         
@@ -127,22 +128,24 @@
             <span id="init-timer">0.0</span>s  
           </span>
         </div>  
-        
+
+        <!--SI　LI　Superimporsedなど解析方法を選択  -->
         <div id="ui-area" style="display:none; align-items:center; gap:10px; flex-wrap:wrap;">    
             <select name="waveform" id="waveform" style="padding: 5px; height: 38px;">
                 <option value="LI">LI</option>
                 <option value="SI">SI</option>
                 <!-- <option value="Superimporsed LI">SuperImporseLI</option> -->
             </select>
-            
+            <!--ファイルダイアログ  -->
             <label class="file-label">
                 Select File/ファイルを選択 (CSV / TXT)
                 <input type="file" id="file-upload" accept=".csv,.txt" style="display:none;">
             </label>
+            <!--選択したファイル  -->
             <span id="file-info"></span>
         </div>
 
-        <!-- Ratio入力（横並び） -->
+        <!-- Ratio入力-->
         <div style="display: flex; align-items: center; gap: 5px;">
             <label for="ratioInput" style="white-space: nowrap;">Ratio:</label>
             <input type="number" id="ratioInput" value="1" step="1" style="width: 120px;">
@@ -177,6 +180,10 @@ from pyscript import window, document, when
 from collections import Counter    
 import io
 import json
+import warnings
+from scipy.optimize import OptimizeWarning
+
+
 
 print("PYTHON STARTED")
 
@@ -206,10 +213,6 @@ def run_si(data):
 def run_super_imporse_li(data):
     return "Super result"    
 
-def run_analysis(data):
-    return processors[mode](data)
-
-    
 #黒背景に緑文字の状況表示欄    
 status_el = document.getElementById("status")
 #選択したファイル    
@@ -222,11 +225,18 @@ def update_status(text, animated=False):
     status_el.innerText = text
     if animated: status_el.classList.add("dot-ani")
     else: status_el.classList.remove("dot-ani")
-#フィッティングさせる基底式　重要　vpeak * np.exp(-t / b) - shift * np.exp(-t / a)　t/bとt/aでないと丸みがありフィットしない
-def v_model(t_us, vpeak, b, shift, a):
-    t = np.where(t_us <= 1e-4, 1e-4, t_us)
-    return vpeak * np.exp(-t / b) - shift * np.exp(-t / a)
-
+    
+#フィッティングさせる基底式　重要　vpeak * np.exp(-t-t0 / b) - shift * np.exp(-t-t0 / a)　t/bとt/aでないと丸みがありフィットしない
+def v_model(t_us, vpeak, b, shift, a, t0):
+    t = np.maximum(t_us - t0, 1e-6)
+    y = (
+        vpeak * np.exp(-t / b)
+        - shift * np.exp(-t / a)
+    )
+    # 微小負値除去
+    y = np.maximum(y, 0)
+    return y
+    
 def to_js(obj):
     return window.JSON.parse(json.dumps(obj))
 
@@ -279,7 +289,7 @@ def _detect_format(lines):
 #横河DLシリーズ以外はgenericとする　後述するがさらに分岐していく
     return "generic"
 
-    
+#横河DLシリーズのファイル形式に従い t,v,dt値を得る    
 def _parse_yokogawa(lines):
     js_log = window.console.log
     js_log("Yokogawa DL format recognized.")
@@ -303,7 +313,7 @@ def _parse_yokogawa(lines):
 
     return {"time": t, "voltage": v, "dt": dt}
 
-#横河以外と選別したファイルをさらに読み解く
+#横河以外と選別したファイルをさらに読み解く(岩通、テクトロ、Hias)
 async def _parse_generic(lines, meta):
     rows = []
 
@@ -388,7 +398,7 @@ async def _parse_generic(lines, meta):
             user_input["start_idx"],
             user_input["mhz"]
         )
-    
+#横河DLシリーズは1列電圧情報しかなく、ヘッダーからサンプリングレート、時間軸、トリガ前の時間　情報を取得しないと描画できない    
 def _extract_yoko_meta(lines):
     s_rate = h_res = h_off = None
 
@@ -409,8 +419,9 @@ def _extract_yoko_meta(lines):
         except:
             pass
 
-    return s_rate, h_res, h_off    
-# データを整形　時間、電圧、時間間隔、サンプリングレート、電圧のRatio
+    return s_rate, h_res, h_off
+    
+#すべてのデータを時間、電圧、時間間隔、サンプリングレート、電圧のRatio
 def _finalize(result):
     t = result["time"]
     v = result["voltage"]
@@ -433,7 +444,7 @@ def _finalize(result):
     }
 
 
-#対応できないcsvファイル形式が来たらユーザーに主要なパラメーターを手入力させる
+#対応できないcsvファイル形式用　ユーザーに主要なパラメーターを手入力させる
 def _parse_with_user_setting(lines, start_idx, mhz_val):
 
     rows = []
@@ -512,7 +523,7 @@ def _is_float(self, val):
     except:
         return False
 
-#フィッティングデータ解析
+#フィッティングデータ解析　これはLI　今後SIも展開する
 def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
     t_us, idx_start = _compute_time_axis(v_raw_v, dt_us)
 
@@ -523,7 +534,7 @@ def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
         fit["v_fit"],
         dt_sec
     )
-
+    #T1,T2計測用　SIの場合少し変わる
     metrics = _extract_metrics(
         filt["v_filtered"],
         t_us,
@@ -536,11 +547,12 @@ def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
         **filt,
         **metrics,
         "t_us": t_us,
+        "dt_us": dt_us,
         "fs_mhz": fs_mhz,
         "v_raw": v_raw_v
     }
     
-#時間軸をデータ配列へ
+#仮想セロ点を設定　時間軸をデータ配列へ
 def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
     abs_v = np.abs(v_raw_v)
     v_max = np.max(abs_v)
@@ -557,24 +569,81 @@ def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
 
 #フィッティングデータ解析    
 def _fit_waveform(v_raw_v, t_us):
+    # -----------------------------
+    # baseline correction
+    # -----------------------------
+    pre_mask = t_us < 0
+    if np.any(pre_mask):
+        baseline = np.mean(v_raw_v[pre_mask])
+    else:
+        baseline = 0.0
+    
+    v_raw_v = v_raw_v - baseline
     abs_v = np.abs(v_raw_v)
 
     t_max_idx = np.argmax(abs_v)
     polarity = 1.0 if v_raw_v[t_max_idx] >= 0 else -1.0
 
     mask = t_us >= 0
-    p0 = [np.max(abs_v)*2.0, 5.0, np.max(abs_v)*1.8, 0.5]
 
-    popt, _ = curve_fit(
-        v_model,
-        t_us[mask],
-        abs_v[mask],
-        p0=p0,
-        maxfev=10000
+    fit_t = t_us[mask]
+    fit_y = abs_v[mask]
+
+    peak = np.max(fit_y)
+    peak_t = fit_t[np.argmax(fit_y)]
+
+    # -----------------------------
+    # 初期値
+    # -----------------------------
+    p0 = [
+        peak * 2.0,
+        5.0,
+        peak * 1.8,
+        0.5,
+        0.0
+    ]
+
+    # -----------------------------
+    # 重み設定
+    # 立上り30%-100%のみ強調
+    # -----------------------------
+    sigma = np.ones_like(fit_y)
+
+    rising_mask = (
+        (fit_y >= peak * 0.3) &
+        (fit_t <= peak_t)
     )
 
+    sigma[rising_mask] = 0.1
+    
+    bounds = (
+    [0, 0.01, 0, 0.001, -10],
+    [1e9, 100, 1e9, 20, 10]
+    )
+    # -----------------------------
+    # フィット
+    # -----------------------------
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", OptimizeWarning)
+    popt, _ = curve_fit(
+        v_model,
+        fit_t,
+        fit_y,
+        p0=p0,
+        sigma=sigma,
+        bounds=bounds,
+        absolute_sigma=False,
+        maxfev=30000
+    )
+
+    # -----------------------------
+    # 波形生成
+    # -----------------------------
     v_fit = np.zeros_like(v_raw_v)
-    v_fit[mask] = v_model(t_us[mask], *popt) * polarity
+
+    v_fit[mask] = (
+        v_model(fit_t, *popt) * polarity
+    )
 
     residual = v_raw_v - v_fit
 
@@ -603,50 +672,76 @@ def _apply_fft_filter(v_raw_v, v_fit, dt_sec):
         "k": k
     }
 
-#T1,T2計測への各点を座標化
+#T1,T2計測への各点を座標化 LI用、SI用など
 def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
+
     abs_v = np.abs(v_filtered)
 
     pk_idx = np.argmax(abs_v)
+
     v_pk = v_filtered[pk_idx]
 
-    # ★追加（電圧レベル）
-    v_90 = abs_v[pk_idx] * 0.9
-    v_50 = abs_v[pk_idx] * 0.5
-    v_30 = abs_v[pk_idx] * 0.3
+    polarity = np.sign(v_pk)
 
-    idx_30 = np.interp(v_30, abs_v[:pk_idx], np.arange(pk_idx))
-    idx_90 = np.interp(v_90, abs_v[:pk_idx], np.arange(pk_idx))
-    idx_50 = np.interp(v_50, abs_v[pk_idx:][::-1], np.arange(len(v_filtered)-1, pk_idx-1, -1))
+    # 描画用電圧（極性保持）
+    v_100 = abs(v_pk) * 1.0 * polarity
+    v_90  = abs(v_pk) * 0.9 * polarity
+    v_50  = abs(v_pk) * 0.5 * polarity
+    v_30  = abs(v_pk) * 0.3 * polarity
+
+    # 時間位置検出は abs 使用
+    idx_30 = np.interp(abs(v_30), abs_v[:pk_idx], np.arange(pk_idx))
+    idx_90 = np.interp(abs(v_90), abs_v[:pk_idx], np.arange(pk_idx))
+
+    idx_50 = np.interp(
+        abs(v_50),
+        abs_v[pk_idx:][::-1],
+        np.arange(len(v_filtered)-1, pk_idx-1, -1)
+    )
+
+    idx_100 = np.interp(abs(v_100), abs_v[:pk_idx], np.arange(pk_idx))
 
     t_30 = (idx_30 - idx_start) * dt_us
     t_50 = (idx_50 - idx_start) * dt_us
     t_90 = (idx_90 - idx_start) * dt_us
-    
+    t_100 = (idx_100 - idx_start) * dt_us
+
     t1 = ((idx_90 - idx_30) * dt_us) / 0.6
     t0 = t_30 - 0.3 * t1
     t2 = t_50 - t0
 
     return {
         "v_pk": v_pk,
-        "v_90": v_90,   # ★追加
-        "v_50": v_50,   # ★追加
-        "v_30": v_30,   # ★追加
+        "v_100": v_100,
+        "v_90": v_90,
+        "v_50": v_50,
+        "v_30": v_30,
         "t1": t1,
         "t2": t2,
         "t0": t0,
         "t_30": t_30,
         "t_50": t_50,
         "t_90": t_90,
+        "t_100": t_100,
         "idx_90": idx_90,
+        "idx_100": idx_100,
         "idx_start": idx_start
     }
+#LI用のT1,T2計測
+def analyze_li_metrics(v_filtered, t_us, idx_start, dt_us):
+    return _extract_metrics(v_filtered, t_us, idx_start, dt_us)
 
+def analyze_si_metrics(v_filtered, t_us, idx_start, dt_us):
+    return _extract_metrics(v_filtered, t_us, idx_start, dt_us)   
+    
 #解析結果をグラフへ    
-def render_results(result):
+"""def render_results(result):
     window.console.log(result.keys())
 
-    t_us = result["t_us"]
+    fit = result["fit"]
+    metrics = result["metrics"]
+    
+    t_us = fit["t_us"]
 
     # --- 波形 ---
     main_traces = [
@@ -777,41 +872,290 @@ def render_results(result):
         f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
     )
 
+    update_status(status_text)     """
+
+#仮置き    
+def render_results(result):
+
+    mode = result.get("mode", "LI")
+
+    window.console.log(result.keys())
+
+    t_us = result["t_us"]
+
+    # --- 波形 ---
+    main_traces = [
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["v_raw"]/1000),
+            "name": "Raw",
+            "line": {"color": "gray", "width": 1}
+        },
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["residual"]/10000),
+            "name": "Residual",
+            "line": {"color": "#dcdcdc", "width": 1}
+        },
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["v_filtered"]/1000),
+            "name": "Filtered",
+            "line": {"color": "#00b359", "width": 3}
+        },
+        {
+            "x": [
+                result["t0"],
+                result["t_30"],
+                result["t_90"],
+                result["t_50"],
+                result["t0"] + result["t1"]
+            ],
+            "y": [
+                0,
+                result["v_30"]/1000,
+                result["v_90"]/1000,
+                result["v_50"]/1000,
+                0
+            ],
+            "mode": "markers",
+            "marker": {"color": "red", "size": 8},
+            "name": "Points"
+        }
+    ]
+
+    layout = {
+        "template": "plotly_white",
+        "xaxis": {"title": "Time [us]"},
+        "yaxis": {"title": "Voltage [kV]"},
+        "margin": dict(l=50, r=10, t=30, b=30, pad=0),
+        "autosize": True,
+        "shapes": []
+    }
+
+    # LI/SI 共通線
+    layout["shapes"] = [
+        {
+            "type": "line",
+            "x0": result["t0"],
+            "y0": 0,
+            "x1": result["t0"] + result["t1"],
+            "y1": result["v_pk"]/1000,
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t0"] + result["t1"],
+            "y0": result["v_pk"]/1000,
+            "x1": result["t0"] + result["t1"],
+            "y1": 0,
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t0"],
+            "y0": result["v_50"]/1000,
+            "x1": result["t_50"],
+            "y1": result["v_50"]/1000,
+            "line": {"color": "gray", "dash": "dash", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t_50"],
+            "y0": result["v_50"]/1000,
+            "x1": result["t_50"],
+            "y1": 0,
+            "line": {"color": "gray", "dash": "dash", "width": 1}
+        }
+    ]
+
+    window.Plotly.newPlot(
+        "plot-main",
+        to_js(main_traces),
+        to_js(layout)
+    )
+
+    render_fft(result)
+
+    popt = result["popt"]
+
+    status_text = (
+        f"Completed: Voltage={result['v_pk']/1000:.2f}kV  "
+        f"T1={result['t1']:.2f}us  "
+        f"T2={result['t2']:.2f}us\n"
+        f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
+        f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
+    )
+
     update_status(status_text)
 
+#FFT関数    
+def render_fft(result):
 
+    xf = result["xf"]
+    yf = result["yf"]
+    k_factor = result["k"]
+
+    window.console.log(
+        f"FFT debug: len={len(xf)}, positive={np.sum(xf>0)}"
+    )
+
+    n = len(yf)
+    mask_fft = xf > 0
+
+    window.plotFFTInJS(
+        to_js((xf[mask_fft]/1e6).tolist()),
+        to_js((np.abs(yf[mask_fft])*2/n).tolist()),
+        to_js((np.abs(yf[mask_fft]*k_factor[mask_fft])*2/n).tolist()),
+        10.0
+    )
+#仮置き　グラフ線描画　raw regidual fitted ドット点     
+def build_main_traces(result, t_us):
+
+    return [
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["v_raw"]/1000),
+            "name": "Raw",
+            "line": {"color": "gray", "width": 1}
+        },
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["residual"]/10000),
+            "name": "Residual",
+            "line": {"color": "#dcdcdc", "width": 1}
+        },
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["v_filtered"]/1000),
+            "name": "Filtered",
+            "line": {"color": "#00b359", "width": 3}
+        },
+        {
+            "x": [
+                result["t0"],
+                result["t_30"],
+                result["t_90"],
+                result["t_50"],
+                result["t0"] + result["t1"]
+            ],
+            "y": [
+                0,
+                result["v_30"]/1000,
+                result["v_90"]/1000,
+                result["v_50"]/1000,
+                0
+            ],
+            "mode": "markers",
+            "marker": {"color": "red", "size": 8},
+            "name": "Points"
+        }
+    ]
+
+#LI用　T1,T2 罫線引き
+def add_li_shapes(layout, result):
+
+       layout["shapes"] = [
+        {
+            "type": "line",
+            "x0": result["t0"],
+            "y0": 0,
+            "x1": result["t0"] + result["t1"],
+            "y1": result["v_pk"]/1000,
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t0"] + result["t1"],
+            "y0": result["v_pk"]/1000,
+            "x1": result["t0"] + result["t1"],
+            "y1": 0,
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t0"],
+            "y0": result["v_50"]/1000,
+            "x1": result["t_50"],
+            "y1": result["v_50"]/1000,
+            "line": {"color": "gray", "dash": "dash", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t_50"],
+            "y0": result["v_50"]/1000,
+            "x1": result["t_50"],
+            "y1": 0,
+            "line": {"color": "gray", "dash": "dash", "width": 1}
+        }
+    ]
+
+
+#SI用T1,T2 罫線引き
+def add_si_shapes(layout, result):
+
+    layout["shapes"] = [
+        {
+            "type": "line",
+            "x0": result["t0"],
+            "y0": 0,
+            "x1": result["t0"] + result["t1"],
+            "y1": result["v_pk"]/1000,
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t0"] + result["t1"],
+            "y0": result["v_pk"]/1000,
+            "x1": result["t0"] + result["t1"],
+            "y1": 0,
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t0"],
+            "y0": result["v_50"]/1000,
+            "x1": result["t_50"],
+            "y1": result["v_50"]/1000,
+            "line": {"color": "gray", "dash": "dash", "width": 1}
+        },
+        {
+            "type": "line",
+            "x0": result["t_50"],
+            "y0": result["v_50"]/1000,
+            "x1": result["t_50"],
+            "y1": 0,
+            "line": {"color": "gray", "dash": "dash", "width": 1}
+        }
+    ]
+    
 #LI SI Super と展開していく
 async def run_pipeline(f):
     parsed = await parse_waveform_file(f, meta={})
-
     v_raw_v = parsed["voltage"]
     dt_sec = parsed["dt"]
     dt_us = parsed["dt_us"]
     fs_mhz = parsed["fs_mhz"]
 
     window.console.log(f"Loaded {len(v_raw_v)} samples")
-
     return run_analysis(v_raw_v, dt_sec, dt_us, fs_mhz)
 
 #LI SI Super   で解析方法を分岐する 
-def run_analysis(v_raw_v, dt_sec, dt_us, fs_mhz):
-    if mode == "LI":
-        return analyze_li(v_raw_v, dt_sec, dt_us, fs_mhz)
+def run_analysis(mode, fit_result):
 
-    elif mode == "SI":
-        return analyze_si(v_raw_v, dt_sec, dt_us, fs_mhz)
-
-    elif mode == "SuperImporsed LI":
-        return analyze_super_imporse_li(v_raw_v, dt_sec, dt_us, fs_mhz)
-
-    else:
+    if mode not in ["LI", "SI", "SuperImposed LI"]:
         raise ValueError(f"Unknown mode: {mode}")
 
+    fit_result["mode"] = mode
+
+    return fit_result
+
+    
 #LI解析    
 def analyze_li(v_raw_v, dt_sec, dt_us, fs_mhz):
     return analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz)
 
-#SI解析    
+#SI解析    特にカーブフィットは同じロジックなはず、初期値の変更だけか
 def analyze_si(v_raw_v, dt_sec, dt_us, fs_mhz):
     # ここに新ロジック
     return {
@@ -841,17 +1185,22 @@ async def handle_file(event):
         dt_us = parsed["dt_us"]
         fs_mhz = parsed["fs_mhz"]
 
-        js_log(f"Loaded {len(v_raw_v)} samples")
+        mode = parsed.get("mode", "LI")
+
+        js_log(f"Loaded {len(v_raw_v)} samples / mode={mode}")
 
         # ② 解析
-        analysis = analyze_waveform(
+        fit_result = analyze_waveform(
             v_raw_v,
             dt_sec,
             dt_us,
             fs_mhz
         )
 
-        # ③ 描画
+        # ③ mode分岐
+        analysis = run_analysis(mode, fit_result)
+
+        # ④ 描画分岐（←ここが重要）
         render_results(analysis)
 
         """update_status(
