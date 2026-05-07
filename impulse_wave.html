@@ -217,7 +217,9 @@ def run_super_imporse_li(data):
 status_el = document.getElementById("status")
 #選択したファイル    
 file_info_el = document.getElementById("file-info")
-
+# LI or SI
+mode_select = document.getElementById("waveform")
+    
 def on_python_ready():
     document.getElementById("control-panel").style.display = "flex"
     
@@ -552,7 +554,7 @@ def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
         "v_raw": v_raw_v
     }
     
-#仮想セロ点を設定　時間軸をデータ配列へ
+#急峻な箇所を見つけてIndexを0に　時間軸をデータ配列へ　マイクロ秒に
 def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
     abs_v = np.abs(v_raw_v)
     v_max = np.max(abs_v)
@@ -560,6 +562,7 @@ def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
     if v_max == 0:
         idx_start = 0
     else:
+        #急峻に立ち上がる(立下がる)最初の点がidx_startに入る　SI時のゼロ点
         idx_candidates = np.where(abs_v > v_max * threshold)[0]
         idx_start = idx_candidates[0] if len(idx_candidates) else 0
 
@@ -711,7 +714,8 @@ def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
     t2 = t_50 - t0
 
     return {
-        "v_pk": v_pk,
+        "v_pk": v_pk,  
+        "t_peak": t_us[pk_idx],
         "v_100": v_100,
         "v_90": v_90,
         "v_50": v_50,
@@ -727,163 +731,21 @@ def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
         "idx_100": idx_100,
         "idx_start": idx_start
     }
-#LI用のT1,T2計測
-def analyze_li_metrics(v_filtered, t_us, idx_start, dt_us):
-    return _extract_metrics(v_filtered, t_us, idx_start, dt_us)
-
-def analyze_si_metrics(v_filtered, t_us, idx_start, dt_us):
-    return _extract_metrics(v_filtered, t_us, idx_start, dt_us)   
     
 #解析結果をグラフへ    
-"""def render_results(result):
-    window.console.log(result.keys())
-
-    fit = result["fit"]
-    metrics = result["metrics"]
-    
-    t_us = fit["t_us"]
-
-    # --- 波形 ---
-    main_traces = [
-        {"x": safe_list(t_us), "y": safe_list(result["v_raw"]/1000),
-         "name": "Raw",
-         "line": {"color": "gray", "width": 1}
-        },
-        {"x": safe_list(t_us), "y": safe_list(result["residual"]/10000),
-         "name": "Residual",
-         "line": {"color": "#dcdcdc", "width": 1}
-        },
-         #{"x": safe_list(t_us), "y": safe_list(result["v_fit"]/1000),
-         #"name": "Fit",
-         #"line": {"color": "#5dade2", "width": 1}
-         #},
-        {"x": safe_list(t_us), "y": safe_list(result["v_filtered"]/1000),
-         "name": "Filtered",
-         "line": {"color": "#00b359", "width": 3}
-        },
-
-        # --- ポイント ---
-        {
-            "x": [
-                result["t0"],
-                result["t_30"],
-                result["t_90"],   # ← 90%
-                result["t_50"],
-                result["t0"] + result["t1"]
-            ],
-            "y": [
-                0,
-                (result["v_pk"]*0.3)/1000,
-                (result["v_pk"]*0.9)/1000,
-                (result["v_pk"]*0.5)/1000,
-                0
-            ],
-            "mode": "markers",
-            "marker": {"color": "red", "size": 8},
-            "name": "Points"
-        }
-    ]
-
-    # --- ★罫線（これが抜けてた） ---
-    layout = {
-        "template": "plotly_white",
-        "xaxis": {"title": "Time [us]"},
-        "yaxis": {"title": "Voltage [kV]"},
-        # ここが重要（余白を極限まで削る）
-        "margin": dict(l=50, r=10, t=30, b=30, pad=0),
-        # 図全体をキャンバスにフィット
-        "autosize": True,
-    
-        "shapes": [
-            # T1ライン
-            {
-                "type": "line",
-                "x0": result["t0"],
-                "y0": 0,
-                "x1": result["t0"] + result["t1"],
-                "y1": result["v_pk"]/1000,
-                "line": {"color": "red", "dash": "dashdot", "width": 1}
-            },
-            {
-                "type": "line",
-                "x0": result["t0"] + result["t1"],
-                "y0": result["v_pk"]/1000,
-                "x1": result["t0"] + result["t1"],
-                "y1": 0,
-                "line": {"color": "red", "dash": "dashdot", "width": 1}
-            },
-
-            # 50% 水平
-            {
-                "type": "line",
-                "x0": result["t0"],
-                "y0": (result["v_pk"]*0.5)/1000,
-                "x1": result["t_50"],
-                "y1": (result["v_pk"]*0.5)/1000,
-                "line": {"color": "gray", "dash": "dash", "width": 1}
-            },
-
-            # 50% 垂直
-            {
-                "type": "line",
-                "x0": result["t_50"],
-                "y0": (result["v_pk"]*0.5)/1000,
-                "x1": result["t_50"],
-                "y1": 0,
-                "line": {"color": "gray", "dash": "dash", "width": 1}
-            }
-        ]
-    }
-
-    # --- ★ここ重要：layoutを渡す ---
-    window.Plotly.newPlot(
-        "plot-main",
-        to_js(main_traces),
-        to_js(layout)
-    )
-
-    # --- FFT ---
-    xf = result["xf"]
-    yf = result["yf"]
-    k_factor = result["k"]
-
-    window.console.log(
-        f"FFT debug: len={len(xf)}, positive={np.sum(xf>0)}"
-    )
-
-    n = len(yf)
-    mask_fft = xf > 0
-
-    window.plotFFTInJS(
-        to_js((xf[mask_fft]/1e6).tolist()),
-        to_js((np.abs(yf[mask_fft])*2/n).tolist()),
-        to_js((np.abs(yf[mask_fft]*k_factor[mask_fft])*2/n).tolist()),
-        10.0
-    )
-
-    # --- ステータス ---
-    popt = result["popt"]
-
-    status_text = (
-        f"Completed: Voltage={result['v_pk']/1000:.2f}kV  "
-        f"T1={result['t1']:.2f}us  "
-        f"T2={result['t2']:.2f}us\n"
-        f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
-        f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
-    )
-
-    update_status(status_text)     """
 
 #仮置き    
 def render_results(result):
 
-    mode = result.get("mode", "LI")
+    mode = mode_select.value
 
     window.console.log(result.keys())
 
     t_us = result["t_us"]
 
-    # --- 波形 ---
+    # -------------------------
+    # Main traces
+    # -------------------------
     main_traces = [
         {
             "x": safe_list(t_us),
@@ -902,28 +764,12 @@ def render_results(result):
             "y": safe_list(result["v_filtered"]/1000),
             "name": "Filtered",
             "line": {"color": "#00b359", "width": 3}
-        },
-        {
-            "x": [
-                result["t0"],
-                result["t_30"],
-                result["t_90"],
-                result["t_50"],
-                result["t0"] + result["t1"]
-            ],
-            "y": [
-                0,
-                result["v_30"]/1000,
-                result["v_90"]/1000,
-                result["v_50"]/1000,
-                0
-            ],
-            "mode": "markers",
-            "marker": {"color": "red", "size": 8},
-            "name": "Points"
         }
     ]
 
+    # -------------------------
+    # Layout
+    # -------------------------
     layout = {
         "template": "plotly_white",
         "xaxis": {"title": "Time [us]"},
@@ -933,41 +779,14 @@ def render_results(result):
         "shapes": []
     }
 
-    # LI/SI 共通線
-    layout["shapes"] = [
-        {
-            "type": "line",
-            "x0": result["t0"],
-            "y0": 0,
-            "x1": result["t0"] + result["t1"],
-            "y1": result["v_pk"]/1000,
-            "line": {"color": "red", "dash": "dashdot", "width": 1}
-        },
-        {
-            "type": "line",
-            "x0": result["t0"] + result["t1"],
-            "y0": result["v_pk"]/1000,
-            "x1": result["t0"] + result["t1"],
-            "y1": 0,
-            "line": {"color": "red", "dash": "dashdot", "width": 1}
-        },
-        {
-            "type": "line",
-            "x0": result["t0"],
-            "y0": result["v_50"]/1000,
-            "x1": result["t_50"],
-            "y1": result["v_50"]/1000,
-            "line": {"color": "gray", "dash": "dash", "width": 1}
-        },
-        {
-            "type": "line",
-            "x0": result["t_50"],
-            "y0": result["v_50"]/1000,
-            "x1": result["t_50"],
-            "y1": 0,
-            "line": {"color": "gray", "dash": "dash", "width": 1}
-        }
-    ]
+    # -------------------------
+    # Mode branch
+    # -------------------------
+    if mode == "LI":
+        render_li_annotations(layout, main_traces, result)
+
+    elif mode == "SI":
+        render_si_annotations(layout, main_traces, result)
 
     window.Plotly.newPlot(
         "plot-main",
@@ -979,13 +798,28 @@ def render_results(result):
 
     popt = result["popt"]
 
-    status_text = (
-        f"Completed: Voltage={result['v_pk']/1000:.2f}kV  "
-        f"T1={result['t1']:.2f}us  "
-        f"T2={result['t2']:.2f}us\n"
-        f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
-        f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
-    )
+    # 波形タイプ（LI or SI）を判定（resultに判定フラグがある前提）
+    is_si = (mode == "SI")
+    
+    if is_si:
+        # SI（開閉インパルス）の場合：一般的にピーク時間(Tp)と半値時間(T2)を表示
+        # T1の代わりにTp（Time to Peak）を使うことが多い
+        status_text = (
+            f"Completed (SI): Voltage={result['v_pk']/1000:.2f}kV  "
+            f"Tp={result['t_peak']:.2f}us  "
+            f"T2={result['t2']:.2f}us\n"
+            f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
+            f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
+        )
+    else:
+        # LI（雷インパルス）の場合：波頭長(T1)と波尾長(T2)を表示
+        status_text = (
+            f"Completed (LI): Voltage={result['v_pk']/1000:.2f}kV  "
+            f"T1={result['t1']:.2f}us  "
+            f"T2={result['t2']:.2f}us\n"
+            f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
+            f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
+        )
 
     update_status(status_text)
 
@@ -1053,81 +887,168 @@ def build_main_traces(result, t_us):
     ]
 
 #LI用　T1,T2 罫線引き
-def add_li_shapes(layout, result):
+def render_li_annotations(layout, traces, result):
 
-       layout["shapes"] = [
+    traces.append({
+        "x": [
+            result["t0"],
+            result["t_30"],
+            result["t_90"],
+            result["t_50"],
+            result["t0"] + result["t1"]
+        ],
+        "y": [
+            0,
+            result["v_30"]/1000,
+            result["v_90"]/1000,
+            result["v_50"]/1000,
+            0
+        ],
+        "mode": "markers",
+        "marker": {"color": "red", "size": 8},
+        "name": "Points"
+    })
+
+    layout["shapes"].extend([
+
         {
             "type": "line",
             "x0": result["t0"],
             "y0": 0,
             "x1": result["t0"] + result["t1"],
             "y1": result["v_pk"]/1000,
-            "line": {"color": "red", "dash": "dashdot", "width": 1}
+            "line": {
+                "color": "red",
+                "dash": "dashdot",
+                "width": 1
+            }
         },
+
         {
             "type": "line",
             "x0": result["t0"] + result["t1"],
             "y0": result["v_pk"]/1000,
             "x1": result["t0"] + result["t1"],
             "y1": 0,
-            "line": {"color": "red", "dash": "dashdot", "width": 1}
+            "line": {
+                "color": "red",
+                "dash": "dashdot",
+                "width": 1
+            }
         },
-        {
-            "type": "line",
-            "x0": result["t0"],
-            "y0": result["v_50"]/1000,
-            "x1": result["t_50"],
-            "y1": result["v_50"]/1000,
-            "line": {"color": "gray", "dash": "dash", "width": 1}
-        },
+    
         {
             "type": "line",
             "x0": result["t_50"],
             "y0": result["v_50"]/1000,
             "x1": result["t_50"],
             "y1": 0,
-            "line": {"color": "gray", "dash": "dash", "width": 1}
+            "line": {
+                "color": "gray",
+                "dash": "dash",
+                "width": 1
+            }
         }
-    ]
-
+    ])
 
 #SI用T1,T2 罫線引き
-def add_si_shapes(layout, result):
+def render_si_annotations(layout, traces, result):
 
-    layout["shapes"] = [
+    t_us = result["t_us"]
+    idx_start = result["idx_start"]
+
+    t_start = t_us[idx_start]
+
+    # -------------------------
+    # Marker points
+    # -------------------------
+    traces.append({
+
+        "x": [
+            t_start,
+            result["t_peak"],
+            result["t_50"]
+        ],
+
+        "y": [
+            0,
+            result["v_pk"]/1000,
+            result["v_50"]/1000
+        ],
+
+        "mode": "markers",
+
+        "marker": {
+            "color": "blue",
+            "size": 8
+        },
+
+        "name": "SI Points"
+    })
+
+    # -------------------------
+    # 50% guide
+    # -------------------------
+    layout["shapes"].extend([
         {
             "type": "line",
-            "x0": result["t0"],
+            "x0": float(t_start),
             "y0": 0,
-            "x1": result["t0"] + result["t1"],
+            "x1": result["t_peak"],
             "y1": result["v_pk"]/1000,
-            "line": {"color": "red", "dash": "dashdot", "width": 1}
+            "line": {
+                "color": "blue",
+                "dash": "dashdot",
+                "width": 1
+            }
         },
+    
         {
             "type": "line",
-            "x0": result["t0"] + result["t1"],
+            "x0": result["t_peak"],
             "y0": result["v_pk"]/1000,
-            "x1": result["t0"] + result["t1"],
+            "x1": result["t_peak"],
             "y1": 0,
-            "line": {"color": "red", "dash": "dashdot", "width": 1}
+            "line": {
+                "color": "blue",
+                "dash": "dashdot",
+                "width": 1
+            }
         },
+    
         {
             "type": "line",
-            "x0": result["t0"],
+
+            "x0": t_start,
             "y0": result["v_50"]/1000,
+
             "x1": result["t_50"],
             "y1": result["v_50"]/1000,
-            "line": {"color": "gray", "dash": "dash", "width": 1}
+
+            "line": {
+                "color": "gray",
+                "dash": "dash",
+                "width": 1
+            }
         },
+
         {
             "type": "line",
+
             "x0": result["t_50"],
             "y0": result["v_50"]/1000,
+
             "x1": result["t_50"],
             "y1": 0,
-            "line": {"color": "gray", "dash": "dash", "width": 1}
+
+            "line": {
+                "color": "gray",
+                "dash": "dash",
+                "width": 1
+            }
         }
-    ]
+    ])
+    
     
 #LI SI Super と展開していく
 async def run_pipeline(f):
@@ -1149,19 +1070,6 @@ def run_analysis(mode, fit_result):
     fit_result["mode"] = mode
 
     return fit_result
-
-    
-#LI解析    
-def analyze_li(v_raw_v, dt_sec, dt_us, fs_mhz):
-    return analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz)
-
-#SI解析    特にカーブフィットは同じロジックなはず、初期値の変更だけか
-def analyze_si(v_raw_v, dt_sec, dt_us, fs_mhz):
-    # ここに新ロジック
-    return {
-        "type": "SI",
-        "result": "SI result"
-    }    
     
 #実際の動作コード　イベントハンドラー    
 @when("change", "#file-upload")
@@ -1185,7 +1093,7 @@ async def handle_file(event):
         dt_us = parsed["dt_us"]
         fs_mhz = parsed["fs_mhz"]
 
-        mode = parsed.get("mode", "LI")
+        mode = mode_select.value
 
         js_log(f"Loaded {len(v_raw_v)} samples / mode={mode}")
 
