@@ -149,7 +149,13 @@
             <input type="number" id="ratioInput" value="1" step="1" style="width: 120px;">
         </div>
         <!--波形グラフ  -->
-        <h3>Waveform Analysis</h3>
+        <div style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div class="controls">
+             <h3 style="margin: 0;">Waveform Analysis</h3>
+            </div>    
+            <span id="status-display" style="font-weight: bold; color: green;">
+                </span>
+        </div>
         <div id="plot-main"></div> 
     　　<!--FFTグラフ  -->
         <h3>FFT Analysis [Residual Data]</h3>
@@ -215,6 +221,8 @@ def run_super_imporse_li(data):
 
 #黒背景に緑文字の状況表示欄    
 status_el = document.getElementById("status")
+status_el2 = document.getElementById('status-display')
+
 #選択したファイル    
 file_info_el = document.getElementById("file-info")
 # LI or SI
@@ -227,6 +235,9 @@ def update_status(text, animated=False):
     status_el.innerText = text
     if animated: status_el.classList.add("dot-ani")
     else: status_el.classList.remove("dot-ani")
+
+def update_status2(text, animated=False):
+    status_el2.innerText = text    
     
 #フィッティングさせる基底式　重要　vpeak * np.exp(-t-t0 / b) - shift * np.exp(-t-t0 / a)　t/bとt/aでないと丸みがありフィットしない
 def v_model(t_us, vpeak, b, shift, a, t0):
@@ -1013,6 +1024,7 @@ def render_results(result):
 
     render_fft(result)
     update_status(build_status_text(mode, result, result["popt"]))
+    update_status2(build_status_text2(mode, result, result["popt"]))
     
 #再計測する
 def recalculate():
@@ -1056,6 +1068,21 @@ def build_status_text(mode, result, popt):
             f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
         )
 
+def build_status_text2(mode, result, popt):
+    is_si = (mode == "SI")
+
+    if is_si:
+        return (
+            f"Voltage={result['v_pk']/1000:.2f}kV  "
+            f"Tp={result['t_peak']:.2f}us  "
+            f"T2={result['t2']:.2f}us\n"
+        )
+    else:
+        return (
+            f"Voltage={result['v_pk']/1000:.2f}kV  "
+            f"T1={result['t1']:.2f}us  "
+            f"T2={result['t2']:.2f}us\n"
+        )
     
 #実際の動作コード　イベントハンドラー    
 @when("change", "#file-upload")
