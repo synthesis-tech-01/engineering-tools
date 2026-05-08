@@ -1093,7 +1093,7 @@ async def handle_file(event):
         return
 
     f = files.item(0)
-    file_info_el.innerText = f"選択ファイル: {f.name}"
+    file_info_el.innerText = f"File: {f.name}"
     update_status("Analyzing...", animated=True)
 
     js_log = window.console.log
