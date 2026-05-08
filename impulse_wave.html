@@ -10,7 +10,6 @@
       　gtag('config', 'G-E4B6H1NV9J');
    　 </script>
 
-    
     <meta charset="UTF-8">
     <title>IMPULSE WAVE ANALYZE</title>
     
@@ -108,11 +107,10 @@
           }
         </style>
 
-<button class="big-button" onclick="confirmCSVSelection()">
-  OK
-</button>
+        <button class="big-button" onclick="confirmCSVSelection()">
+          OK
+        </button>
       </div>
-    
     </div>
 
     
@@ -183,14 +181,16 @@ import json
 import warnings
 from scipy.optimize import OptimizeWarning
 
-
-
 print("PYTHON STARTED")
 
 #LIかSIか   将来　重畳も増えるから 
 mode = "LI"
-processors = {}    
-
+processors = {} 
+   
+result = None
+popt = None
+data = None
+    
 #登録制にする    
 def register_mode(name):
     def wrapper(func):
@@ -526,7 +526,7 @@ def _is_float(self, val):
         return False
 
 #フィッティングデータ解析　これはLI　今後SIも展開する
-def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
+def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz, mode):
     t_us, idx_start = _compute_time_axis(v_raw_v, dt_us)
 
     fit = _fit_waveform(v_raw_v, t_us)
@@ -541,7 +541,8 @@ def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz):
         filt["v_filtered"],
         t_us,
         idx_start,
-        dt_us
+        dt_us,
+        mode
     )
 
     return {
@@ -676,7 +677,7 @@ def _apply_fft_filter(v_raw_v, v_fit, dt_sec):
     }
 
 #T1,T2計測への各点を座標化 LI用、SI用など
-def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
+def _extract_metrics(v_filtered, t_us, idx_start, dt_us, mode):
 
     abs_v = np.abs(v_filtered)
 
@@ -734,94 +735,10 @@ def _extract_metrics(v_filtered, t_us, idx_start, dt_us):
     
 #解析結果をグラフへ    
 
-#仮置き    
-def render_results(result):
 
-    mode = mode_select.value
 
-    window.console.log(result.keys())
 
-    t_us = result["t_us"]
-
-    # -------------------------
-    # Main traces
-    # -------------------------
-    main_traces = [
-        {
-            "x": safe_list(t_us),
-            "y": safe_list(result["v_raw"]/1000),
-            "name": "Raw",
-            "line": {"color": "gray", "width": 1}
-        },
-        {
-            "x": safe_list(t_us),
-            "y": safe_list(result["residual"]/10000),
-            "name": "Residual",
-            "line": {"color": "#dcdcdc", "width": 1}
-        },
-        {
-            "x": safe_list(t_us),
-            "y": safe_list(result["v_filtered"]/1000),
-            "name": "Filtered",
-            "line": {"color": "#00b359", "width": 3}
-        }
-    ]
-
-    # -------------------------
-    # Layout
-    # -------------------------
-    layout = {
-        "template": "plotly_white",
-        "xaxis": {"title": "Time [us]"},
-        "yaxis": {"title": "Voltage [kV]"},
-        "margin": dict(l=50, r=10, t=30, b=30, pad=0),
-        "autosize": True,
-        "shapes": []
-    }
-
-    # -------------------------
-    # Mode branch
-    # -------------------------
-    if mode == "LI":
-        render_li_annotations(layout, main_traces, result)
-
-    elif mode == "SI":
-        render_si_annotations(layout, main_traces, result)
-
-    window.Plotly.newPlot(
-        "plot-main",
-        to_js(main_traces),
-        to_js(layout)
-    )
-
-    render_fft(result)
-
-    popt = result["popt"]
-
-    # 波形タイプ（LI or SI）を判定（resultに判定フラグがある前提）
-    is_si = (mode == "SI")
     
-    if is_si:
-        # SI（開閉インパルス）の場合：一般的にピーク時間(Tp)と半値時間(T2)を表示
-        # T1の代わりにTp（Time to Peak）を使うことが多い
-        status_text = (
-            f"Completed (SI): Voltage={result['v_pk']/1000:.2f}kV  "
-            f"Tp={result['t_peak']:.2f}us  "
-            f"T2={result['t2']:.2f}us\n"
-            f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
-            f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
-        )
-    else:
-        # LI（雷インパルス）の場合：波頭長(T1)と波尾長(T2)を表示
-        status_text = (
-            f"Completed (LI): Voltage={result['v_pk']/1000:.2f}kV  "
-            f"T1={result['t1']:.2f}us  "
-            f"T2={result['t2']:.2f}us\n"
-            f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
-            f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
-        )
-
-    update_status(status_text)
 
 #FFT関数    
 def render_fft(result):
@@ -889,6 +806,10 @@ def build_main_traces(result, t_us):
 #LI用　T1,T2 罫線引き
 def render_li_annotations(layout, traces, result):
 
+    layout = dict(layout)
+    layout["shapes"] = list(layout.get("shapes", []))
+    traces = traces.copy()
+
     traces.append({
         "x": [
             result["t0"],
@@ -906,88 +827,86 @@ def render_li_annotations(layout, traces, result):
         ],
         "mode": "markers",
         "marker": {"color": "red", "size": 8},
-        "name": "Points"
+        "name": "LI Points"
     })
 
     layout["shapes"].extend([
-
         {
             "type": "line",
             "x0": result["t0"],
             "y0": 0,
             "x1": result["t0"] + result["t1"],
             "y1": result["v_pk"]/1000,
-            "line": {
-                "color": "red",
-                "dash": "dashdot",
-                "width": 1
-            }
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
         },
-
         {
             "type": "line",
             "x0": result["t0"] + result["t1"],
             "y0": result["v_pk"]/1000,
             "x1": result["t0"] + result["t1"],
             "y1": 0,
-            "line": {
-                "color": "red",
-                "dash": "dashdot",
-                "width": 1
-            }
+            "line": {"color": "red", "dash": "dashdot", "width": 1}
         },
-    
         {
             "type": "line",
             "x0": result["t_50"],
             "y0": result["v_50"]/1000,
             "x1": result["t_50"],
             "y1": 0,
-            "line": {
-                "color": "gray",
-                "dash": "dash",
-                "width": 1
-            }
+            "line": {"color": "gray", "dash": "dash", "width": 1}
         }
     ])
+    window.console.log("shapes AFTER =", len(layout["shapes"]))
+    return traces, layout
 
 #SI用T1,T2 罫線引き
 def render_si_annotations(layout, traces, result):
 
+    # -------------------------
+    # debug（必要なら）
+    # -------------------------
+    window.console.log("MODE =", mode)
+    window.console.log("SI branch =", mode == "SI")
+
+    # -------------------------
+    # 必ず「コピーは最初」
+    # -------------------------
+    traces = traces.copy()
+
+    layout = dict(layout)
+    layout["shapes"] = list(layout.get("shapes", []))
+
+    # -------------------------
+    # データ準備
+    # -------------------------
     t_us = result["t_us"]
     idx_start = result["idx_start"]
-
     t_start = t_us[idx_start]
 
     # -------------------------
-    # Marker points
+    # marker
     # -------------------------
     traces.append({
-
         "x": [
             t_start,
             result["t_peak"],
             result["t_50"]
         ],
-
         "y": [
             0,
             result["v_pk"]/1000,
             result["v_50"]/1000
         ],
-
         "mode": "markers",
-
         "marker": {
             "color": "blue",
             "size": 8
         },
-
         "name": "SI Points"
     })
 
     # -------------------------
-    # 50% guide
+    # shapes
     # -------------------------
     layout["shapes"].extend([
         {
@@ -1002,7 +921,6 @@ def render_si_annotations(layout, traces, result):
                 "width": 1
             }
         },
-    
         {
             "type": "line",
             "x0": result["t_peak"],
@@ -1015,32 +933,24 @@ def render_si_annotations(layout, traces, result):
                 "width": 1
             }
         },
-    
         {
             "type": "line",
-
             "x0": t_start,
             "y0": result["v_50"]/1000,
-
             "x1": result["t_50"],
             "y1": result["v_50"]/1000,
-
             "line": {
                 "color": "gray",
                 "dash": "dash",
                 "width": 1
             }
         },
-
         {
             "type": "line",
-
             "x0": result["t_50"],
             "y0": result["v_50"]/1000,
-
             "x1": result["t_50"],
             "y1": 0,
-
             "line": {
                 "color": "gray",
                 "dash": "dash",
@@ -1048,32 +958,109 @@ def render_si_annotations(layout, traces, result):
             }
         }
     ])
+    return traces, layout
+
+#結果からグラフを描画   
+def render_results(result):
+    mode = mode_select.value
+    window.console.log("RENDER MODE =", mode)
+
+    t_us = result["t_us"]
+
+    main_traces = [
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["v_raw"]/1000),
+            "name": "Raw",
+            "line": {"color": "gray", "width": 1}
+        },
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["residual"]/10000),
+            "name": "Residual",
+            "line": {"color": "#dcdcdc", "width": 1}
+        },
+        {
+            "x": safe_list(t_us),
+            "y": safe_list(result["v_filtered"]/1000),
+            "name": "Filtered",
+            "line": {"color": "#00b359", "width": 3}
+        }
+    ]
+
+    layout = {
+        "template": "plotly_white",
+        "xaxis": {"title": "Time [us]"},
+        "yaxis": {"title": "Voltage [kV]"},
+        "shapes": []
+    }
+
+    # ★重要：毎回完全再描画
+    window.Plotly.purge("plot-main")
+
+    if mode == "LI":
+        main_traces, layout = render_li_annotations(layout, main_traces, result)
+
+    elif mode == "SI":
+        main_traces, layout = render_si_annotations(layout, main_traces, result)
+
+    window.Plotly.newPlot(
+        "plot-main",
+        to_js(main_traces),
+        to_js(layout),
+        {"responsive": True}
+    )
+
+    render_fft(result)
+    update_status(build_status_text(mode, result, result["popt"]))
     
+#再計測する
+def recalculate():
+    global result, data, mode
+
+    if data is None:
+        return
+
+    mode = mode_select.value
+
+    result = analyze_waveform(
+        data["voltage"],
+        data["dt"],
+        data["dt_us"],
+        data["fs_mhz"],
+        mode
+    )
+
+    result["mode"] = mode
+
+    render_results(result)
     
-#LI SI Super と展開していく
-async def run_pipeline(f):
-    parsed = await parse_waveform_file(f, meta={})
-    v_raw_v = parsed["voltage"]
-    dt_sec = parsed["dt"]
-    dt_us = parsed["dt_us"]
-    fs_mhz = parsed["fs_mhz"]
+#ステータス    
+def build_status_text(mode, result, popt):
+    is_si = (mode == "SI")
 
-    window.console.log(f"Loaded {len(v_raw_v)} samples")
-    return run_analysis(v_raw_v, dt_sec, dt_us, fs_mhz)
+    if is_si:
+        return (
+            f"Completed (SI): Voltage={result['v_pk']/1000:.2f}kV  "
+            f"Tp={result['t_peak']:.2f}us  "
+            f"T2={result['t2']:.2f}us\n"
+            f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
+            f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
+        )
+    else:
+        return (
+            f"Completed (LI): Voltage={result['v_pk']/1000:.2f}kV  "
+            f"T1={result['t1']:.2f}us  "
+            f"T2={result['t2']:.2f}us\n"
+            f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
+            f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
+        )
 
-#LI SI Super   で解析方法を分岐する 
-def run_analysis(mode, fit_result):
-
-    if mode not in ["LI", "SI", "SuperImposed LI"]:
-        raise ValueError(f"Unknown mode: {mode}")
-
-    fit_result["mode"] = mode
-
-    return fit_result
     
 #実際の動作コード　イベントハンドラー    
 @when("change", "#file-upload")
 async def handle_file(event):
+    global data, result, mode
     files = event.target.files
     if not files:
         return
@@ -1087,7 +1074,7 @@ async def handle_file(event):
     try:
         # ① パース
         parsed = await parse_waveform_file(f, meta={})
-
+        data = parsed
         v_raw_v = parsed["voltage"]
         dt_sec = parsed["dt"]
         dt_us = parsed["dt_us"]
@@ -1097,19 +1084,19 @@ async def handle_file(event):
 
         js_log(f"Loaded {len(v_raw_v)} samples / mode={mode}")
 
-        # ② 解析
+        #
         fit_result = analyze_waveform(
             v_raw_v,
             dt_sec,
             dt_us,
-            fs_mhz
+            fs_mhz,
+            mode
         )
-
-        # ③ mode分岐
-        analysis = run_analysis(mode, fit_result)
-
-        # ④ 描画分岐（←ここが重要）
-        render_results(analysis)
+        
+        fit_result["mode"] = mode
+        result = fit_result
+        
+        render_results(result)
 
         """update_status(
             f"Done: fs={fs_mhz:.1f}MHz / samples={len(v_raw_v)}"
@@ -1124,6 +1111,10 @@ async def handle_file(event):
 def on_change(event):
     global mode
     mode = event.target.value
+    window.console.log("MODE CHANGED:", mode)
+    if result is None:
+        return  # ファイル未読み込みなら何もしない
+    recalculate()
 
     
 #パイソン起動後にファイル選択ボタンやLIorSIオプションを出現させる    
@@ -1344,6 +1335,5 @@ function sendContactEmailIMPULSE() {
 }
 </script>
  
-    
 </body>
 </html>
