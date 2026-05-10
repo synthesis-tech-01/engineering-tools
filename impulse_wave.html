@@ -185,6 +185,7 @@ from collections import Counter
 import io
 import json
 import warnings
+import time
 from scipy.optimize import OptimizeWarning
 
 print("PYTHON STARTED")
@@ -241,12 +242,9 @@ def update_status2(text, animated=False):
     
 #フィッティングさせる基底式　重要　vpeak * np.exp(-t-t0 / b) - shift * np.exp(-t-t0 / a)　t/bとt/aでないと丸みがありフィットしない
 def v_model(t_us, vpeak, b, shift, a, t0):
-    t = np.maximum(t_us - t0, 1e-6)
-    y = (
-        vpeak * np.exp(-t / b)
-        - shift * np.exp(-t / a)
-    )
-    # 微小負値除去
+    t = t_us - t0
+    y = vpeak * (np.exp(-t / b) - shift * np.exp(-t / a))
+    # 最後に 0 以上の値であることを保証（もし必要なら）
     y = np.maximum(y, 0)
     return y
     
@@ -539,15 +537,20 @@ def _is_float(self, val):
 #フィッティングデータ解析　これはLI　今後SIも展開する
 def analyze_waveform(v_raw_v, dt_sec, dt_us, fs_mhz, mode):
     t_us, idx_start = _compute_time_axis(v_raw_v, dt_us)
-
-    fit = _fit_waveform(v_raw_v, t_us)
+    fit = _fit_waveform(v_raw_v, t_us, idx_start)
 
     filt = _apply_fft_filter(
         v_raw_v,
         fit["v_fit"],
         dt_sec
     )
-    #T1,T2計測用　SIの場合少し変わる
+
+    dv = np.diff(filt["v_filtered"])
+    idx_dv = np.argmax(dv)
+
+    #window.console.log("idx_start =", int(idx_start))
+    #window.console.log("idx_dv =", int(idx_dv))
+
     metrics = _extract_metrics(
         filt["v_filtered"],
         t_us,
@@ -575,31 +578,43 @@ def _compute_time_axis(v_raw_v, dt_us, threshold=0.05):
         idx_start = 0
     else:
         #急峻に立ち上がる(立下がる)最初の点がidx_startに入る　SI時のゼロ点
-        idx_candidates = np.where(abs_v > v_max * threshold)[0]
-        idx_start = idx_candidates[0] if len(idx_candidates) else 0
-
+        #配列の隣と最も差が大きいデータが
+        dv = np.diff(abs_v)
+        idx_start = np.argmax(dv)
+        #idx_candidates = np.where(abs_v > v_max * threshold)[0]
+        #idx_start = idx_candidates[0] if len(idx_candidates) else 0
+        window.console.log("idx_start =", int(idx_start))
+    
     t_us = (np.arange(len(v_raw_v)) - idx_start) * dt_us
-
+    
     return t_us, idx_start
 
 #フィッティングデータ解析    
-def _fit_waveform(v_raw_v, t_us):
+def _fit_waveform(v_raw_v, t_us, idx_start):
     # -----------------------------
     # baseline correction
     # -----------------------------
-    pre_mask = t_us < 0
+    #t0 = t_us[idx_start]
+    #ストップウォッチ
+    start_time = time.perf_counter()
+    
+    t0 = t_us[0]
+    #window.console.log("t0 =", float(t0))
+    pre_mask = t_us < t0
+    #pre_mask = t_us < 0
+    
     if np.any(pre_mask):
         baseline = np.mean(v_raw_v[pre_mask])
     else:
         baseline = 0.0
-    
+    print(pre_mask)
     v_raw_v = v_raw_v - baseline
     abs_v = np.abs(v_raw_v)
 
     t_max_idx = np.argmax(abs_v)
     polarity = 1.0 if v_raw_v[t_max_idx] >= 0 else -1.0
 
-    mask = t_us >= 0
+    mask = t_us >= t0
 
     fit_t = t_us[mask]
     fit_y = abs_v[mask]
@@ -608,14 +623,14 @@ def _fit_waveform(v_raw_v, t_us):
     peak_t = fit_t[np.argmax(fit_y)]
 
     # -----------------------------
-    # 初期値
+    # 初期値　v_model(t_us, vpeak, b, shift, a, t0):
     # -----------------------------
     p0 = [
-        peak * 2.0,
-        5.0,
-        peak * 1.8,
-        0.5,
-        0.0
+        peak * 1.05,
+        70.0,
+        peak * 0.65,
+        0.4,
+        t0
     ]
 
     # -----------------------------
@@ -625,15 +640,23 @@ def _fit_waveform(v_raw_v, t_us):
     sigma = np.ones_like(fit_y)
 
     rising_mask = (
-        (fit_y >= peak * 0.3) &
-        (fit_t <= peak_t)
+        (fit_y >= peak * 0.275) &
+        (fit_t <= peak * 0.)
+        #(fit_t <= peak_t)
     )
 
     sigma[rising_mask] = 0.1
+    # 1. まずピークに達した時間を特定する（電圧が最小になる位置）
+    peak_t = fit_t[np.argmin(fit_y)]
+    
+    # 2. 減衰時（ピーク以降）であり、なおかつ70%以下
+    decay_mask = (fit_t > peak_t) & (fit_y > peak * 0.99)
+    
+    sigma[decay_mask] = 10.0
     
     bounds = (
-    [0, 0.01, 0, 0.001, -10],
-    [1e9, 100, 1e9, 20, 10]
+    [0, 0.1, 0, 0.1, -100],
+    [1e9, 100, 1e9, 100, 100]
     )
     # -----------------------------
     # フィット
@@ -661,12 +684,20 @@ def _fit_waveform(v_raw_v, t_us):
     )
 
     residual = v_raw_v - v_fit
-
+    # 2. 計測終了
+    end_time = time.perf_counter()
+    
+    # 3. 差分を計算（秒単位）
+    elapsed_time = end_time - start_time
+    window.console.log(f"処理時間: {elapsed_time:.4f} 秒")
+    
     return {
         "v_fit": v_fit,
         "residual": residual,
         "popt": popt
     }
+
+    
 
 #FFTとK-Factor
 def _apply_fft_filter(v_raw_v, v_fit, dt_sec):
@@ -724,6 +755,7 @@ def _extract_metrics(v_filtered, t_us, idx_start, dt_us, mode):
     t1 = ((idx_90 - idx_30) * dt_us) / 0.6
     t0 = t_30 - 0.3 * t1
     t2 = t_50 - t0
+    t00 = idx_start * dt_us
 
     return {
         "v_pk": v_pk,  
@@ -735,6 +767,7 @@ def _extract_metrics(v_filtered, t_us, idx_start, dt_us, mode):
         "t1": t1,
         "t2": t2,
         "t0": t0,
+        "t00": t00,
         "t_30": t_30,
         "t_50": t_50,
         "t_90": t_90,
@@ -758,9 +791,9 @@ def render_fft(result):
     yf = result["yf"]
     k_factor = result["k"]
 
-    window.console.log(
-        f"FFT debug: len={len(xf)}, positive={np.sum(xf>0)}"
-    )
+    #window.console.log(
+    #    f"FFT debug: len={len(xf)}, positive={np.sum(xf>0)}"
+    #)
 
     n = len(yf)
     mask_fft = xf > 0
@@ -777,7 +810,7 @@ def build_main_traces(result, t_us):
     return [
         {
             "x": safe_list(t_us),
-            "y": safe_list(result["v_raw"]/1000),
+            "y": safe_list(np.array(result["v_raw"]) / 1000),
             "name": "Raw",
             "line": {"color": "gray", "width": 1}
         },
@@ -867,7 +900,15 @@ def render_li_annotations(layout, traces, result):
             "line": {"color": "gray", "dash": "dash", "width": 1}
         }
     ])
-    window.console.log("shapes AFTER =", len(layout["shapes"]))
+
+    layout["xaxis"] = dict(layout.get("xaxis", {}))
+    #横軸の目盛り　トリガ点を基準に-10〜+100us秒
+    layout["xaxis"]["range"] = [
+        result["t0"] - 10,
+        result["t0"] + 100
+    ]
+
+    #window.console.log("shapes AFTER =", len(layout["shapes"]))
     return traces, layout
 
 #SI用T1,T2 罫線引き
@@ -876,8 +917,8 @@ def render_si_annotations(layout, traces, result):
     # -------------------------
     # debug（必要なら）
     # -------------------------
-    window.console.log("MODE =", mode)
-    window.console.log("SI branch =", mode == "SI")
+    #window.console.log("MODE =", mode)
+    #window.console.log("SI branch =", mode == "SI")
 
     # -------------------------
     # 必ず「コピーは最初」
@@ -893,13 +934,13 @@ def render_si_annotations(layout, traces, result):
     t_us = result["t_us"]
     idx_start = result["idx_start"]
     t_start = t_us[idx_start]
-
+    #t_start = t_us[0]
     # -------------------------
     # marker
     # -------------------------
     traces.append({
         "x": [
-            t_start,
+            result["t0"],
             result["t_peak"],
             result["t_50"]
         ],
@@ -922,7 +963,7 @@ def render_si_annotations(layout, traces, result):
     layout["shapes"].extend([
         {
             "type": "line",
-            "x0": float(t_start),
+            "x0": result["t0"],
             "y0": 0,
             "x1": result["t_peak"],
             "y1": result["v_pk"]/1000,
@@ -974,22 +1015,22 @@ def render_si_annotations(layout, traces, result):
 #結果からグラフを描画   
 def render_results(result):
     mode = mode_select.value
-    window.console.log("RENDER MODE =", mode)
+    #window.console.log("RENDER MODE =", mode)
 
     t_us = result["t_us"]
 
     main_traces = [
         {
             "x": safe_list(t_us),
-            "y": safe_list(result["v_raw"]/1000),
+            "y": safe_list(np.array(result["v_raw"]) / 1000),
             "name": "Raw",
             "line": {"color": "gray", "width": 1}
         },
         {
             "x": safe_list(t_us),
-            "y": safe_list(result["residual"]/10000),
+            "y": safe_list(result["residual"]/1000),
             "name": "Residual",
-            "line": {"color": "#dcdcdc", "width": 1}
+            "line": {"color": "#dcdcdc", "width": 1} ##dcdcdc
         },
         {
             "x": safe_list(t_us),
@@ -1044,7 +1085,6 @@ def recalculate():
     )
 
     result["mode"] = mode
-
     render_results(result)
     
 #ステータス    
@@ -1056,6 +1096,7 @@ def build_status_text(mode, result, popt):
             f"Completed (SI): Voltage={result['v_pk']/1000:.2f}kV  "
             f"Tp={result['t_peak']:.2f}us  "
             f"T2={result['t2']:.2f}us\n"
+            f"Loaded {len(result['v_raw'])} samples "
             f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
             f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
         )
@@ -1064,6 +1105,7 @@ def build_status_text(mode, result, popt):
             f"Completed (LI): Voltage={result['v_pk']/1000:.2f}kV  "
             f"T1={result['t1']:.2f}us  "
             f"T2={result['t2']:.2f}us\n"
+            f"Loaded {len(result['v_raw'])} samples "
             f"Sampling Rate: {result['fs_mhz']:.1f}MHz | "
             f"Fit: a={popt[3]:.3f}, b={popt[1]:.3f}, shift={popt[2]:.1f}"
         )
@@ -1125,11 +1167,8 @@ async def handle_file(event):
         
         render_results(result)
 
-        """update_status(
-            f"Done: fs={fs_mhz:.1f}MHz / samples={len(v_raw_v)}"
-        )"""
-
     except Exception as e:
+        #window.console.log(locals())
         update_status(f"Error: {str(e)}")
         window.console.error(str(e))
 
